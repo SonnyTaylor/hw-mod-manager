@@ -1,0 +1,7 @@
+{
+    "name": "Gravity Modifier",
+    "version": "1.0.0",
+    "description": "Allows changing the game's gravity in real-time",
+    "author": "HW Mod Manager",
+    "tags": ["gameplay", "physics"]
+}

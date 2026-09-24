@@ -1,0 +1,19 @@
+# Game files (too large, user provides these)
+game-files/
+*.asar
+*.asar.bak
+
+# Node
+node_modules/
+
+# Build output
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
