@@ -90,6 +90,7 @@ Game path defaults to `C:/SteamLibrary/steamapps/common/Happy Wheels`, override 
 - Never modify game assets or the obfuscated `index.js` in `resources/webroot/` — hook at runtime.
 - Everything must stay reversible: backups are created once (`app.asar.original`, `Happy Wheels.exe.original`), never overwritten; restore restores all of them.
 - Git: commit after each working milestone. Do not commit game files or `asar_extracted/` (gitignored).
+- Line endings are pinned by `.gitattributes` (LF in repo, CRLF only for `*.bat` on checkout). If a diff shows whole-file 1:1 insert/delete with no content change, it's line-ending noise — don't commit it.
 
 ## Maintenance Rules (for agents)
 
@@ -109,4 +110,7 @@ Game path defaults to `C:/SteamLibrary/steamapps/common/Happy Wheels`, override 
 - Settings storage (DevTools → Application → Local Storage): key `option135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target.
 - Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — gravity-ui's panel is the UI proof-of-concept.
 - CDP debugger-holder mystery: something attaches to the game page at startup and blocks `wc.debugger` (see loader/AGENTS.md).
-- No git remote yet (user wants laptop sync).
+- Sync setup: `origin` = github.com/SonnyTaylor/hw-mod-manager.git. The repo lives on multiple machines
+  (Windows + Linux). GitHub auth currently lives only in the Windows-side gh credential helper — other
+  machines can't push until they get a PAT or SSH key. Until then, sync by fetching directly from the
+  other machine's working copy: `git fetch <path-to-other-clone> main && git merge --ff-only FETCH_HEAD`.
