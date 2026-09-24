@@ -60,23 +60,26 @@ class GamePatcher {
         const mainPath = path.join(this.extractedPath, 'electron', 'out', 'main.js');
         const mainBackupPath = path.join(this.extractedPath, 'electron', 'out', 'main.js.original');
 
-        // Step 3: Extract asar if not already done
-        if (!fs.existsSync(this.extractedPath)) {
-            console.log('📂 Extracting app.asar...');
-            execSync(`npx @electron/asar extract "${this.asarPath}" "${this.extractedPath}"`);
-        } else {
-            console.log('📂 Using existing extracted files...');
+        // Step 4: Restore pristine asar from backup, then extract from it.
+        // (We extract from app.asar rather than the backup because the asar
+        // tool resolves unpacked files from a name-derived sibling directory:
+        // app.asar -> app.asar.unpacked. Restoring first keeps re-runs
+        // idempotent AND keeps the unpacked path valid.)
+        if (fs.existsSync(this.backupPath)) {
+            fs.copyFileSync(this.backupPath, this.asarPath);
         }
-
-        // Backup main.js before patching (if not already backed up)
-        if (!fs.existsSync(mainBackupPath) && fs.existsSync(mainPath)) {
-            fs.copyFileSync(mainPath, mainBackupPath);
-            console.log('   ✓ Backed up original main.js');
+        if (fs.existsSync(this.extractedPath)) {
+            fs.rmSync(this.extractedPath, { recursive: true, force: true });
         }
+        console.log('📂 Extracting app.asar...');
+        execSync(`npx @electron/asar extract "${this.asarPath}" "${this.extractedPath}"`);
 
-        // Step 4: Patch main.js
+        // Step 5: Patch main.js
         console.log('🔧 Patching main.js...');
         this.patchMainJS();
+
+        // Step 5b: No separate preload patch needed — mods are injected from
+        // the main process via executeJavaScript (see loader/mod-host.js).
 
         // Step 5: Copy mod loader to resources
         console.log('📥 Installing mod loader...');
@@ -122,10 +125,9 @@ class GamePatcher {
 try {
     const __hwModHost = require('node:path').join(__dirname, 'mod-host.js');
     const __hwLoadMods = require(__hwModHost);
-    require('electron').webContents.getAllWebContents ? null : null;
     require('electron').app.on('web-contents-created', (e, wc) => {
         wc.on('did-finish-load', () => {
-            try { __hwLoadMods(require('electron').BrowserWindow.fromWebContents(wc)); }
+            try { __hwLoadMods(wc); }
             catch (err) { console.error('[HW Mod Host] failed:', err); }
         });
     });

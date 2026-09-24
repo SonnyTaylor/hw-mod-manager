@@ -82,15 +82,40 @@ window.__HW__ = {
 console.log('%c[HW]%c Mod runtime injected', 'color:#0af;font-weight:bold', '');
 `;
 
-module.exports = async function loadMods(win) {
+module.exports = async function loadMods(wc) {
+    // Only inject into the actual game page — skip service workers,
+    // devtools pages, and other headless webContents Electron spawns.
+    let url = '';
+    try { url = wc.getURL ? wc.getURL() : ''; } catch (e) {}
+    if (!/totaljerkface\.com/.test(url)) return;
+
     const modsDir = getModsDir();
     try { fs.writeFileSync(LOG_FILE, ''); } catch (e) {}
     log('Mods directory:', modsDir);
 
+    // F12 / Ctrl+Shift+I toggles DevTools. The game ships with the menu
+    // removed and no accelerator bound, so devTools:!0 alone does nothing
+    // until something calls openDevTools().
+    try {
+        wc.on('before-input-event', (e, input) => {
+            if (input.type !== 'keyDown') return;
+            const isF12 = input.key === 'F12';
+            const isCtrlShiftI = input.control && input.shift && input.key.toLowerCase() === 'i';
+            if (isF12 || isCtrlShiftI) {
+                if (wc.isDevToolsOpened()) wc.closeDevTools();
+                else wc.openDevTools({ mode: 'detach' });
+                e.preventDefault();
+            }
+        });
+        log('F12 DevTools toggle registered');
+    } catch (e) {
+        log('F12 registration failed:', e.message);
+    }
+
     // Inject runtime first and WAIT for it — mods reference window.__HW__
     // at the top of their IIFE, so a race here breaks every mod.
     try {
-        await win.webContents.executeJavaScript(RUNTIME, true);
+        await wc.executeJavaScript(RUNTIME, true);
         log('Runtime injected OK');
     } catch (e) {
         log('Runtime injection FAILED:', e.message);
@@ -153,7 +178,7 @@ module.exports = async function loadMods(win) {
 })()`;
 
         try {
-            const result = await win.webContents.executeJavaScript(wrapped, true);
+            const result = await wc.executeJavaScript(wrapped, true);
             if (result.startsWith('OK')) {
                 log(`Injected: ${manifest.name} v${manifest.version} [${result}]`);
             } else {
