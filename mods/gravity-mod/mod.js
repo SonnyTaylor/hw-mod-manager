@@ -3,79 +3,64 @@
  * Usage in console:
  *   gravity.set(0.5)   // half gravity
  *   gravity.moon()     // 0.16x
+ *   gravity.mars()     // 0.38x
+ *   gravity.jupiter()  // 2.53x
  *   gravity.zeroG()    // 0x
- *   gravity.reset()    // back to normal
+ *   gravity.get()      // current gravity
+ *   gravity.reset()    // back to 1x
+ *
+ * World path (discovered live via eval bridge, see mods/AGENTS.md):
+ *   app.screenManager.currentScreen.happyWheels.sessionController.session.m_world
+ * Box2D 2.1a Flash-port API: world.SetGravity(vec), gravity in world.m_gravity
+ * as {x:0, y:10} — y-DOWN positive, physScale 62.5 px/m. b2Vec2 has .Set(x,y).
+ * Only exists while a level is loaded (menu has no session).
  */
 (function () {
     'use strict';
 
     const HW = window.__HW__;
-    const HW_GRAVITY = -10; // PixiJS/box2d convention will be confirmed at runtime
+    const BASE_GRAVITY = 10; // measured live: m_gravity = {x:0, y:10}
 
-    function findWorld() {
-        // The Session object holding the Box2D world isn't globally exposed.
-        // Strategy: walk the stage and look for objects with a b2World-like shape.
-        const stage = HW.getStage();
-        if (!stage) return null;
-        let found = null;
-        (function walk(node, depth) {
-            if (found || depth > 6) return;
-            for (const k of Object.getOwnPropertyNames(node)) {
-                try {
-                    const v = node[k];
-                    if (v && typeof v === 'object' && v.SetGravity && v.GetGravity) {
-                        found = v;
-                        return;
-                    }
-                    if (v && typeof v === 'object' && v.m_world && v.m_world.SetGravity) {
-                        found = v.m_world;
-                        return;
-                    }
-                } catch (e) {}
-            }
-            if (node.children) for (const c of node.children) walk(c, depth + 1);
-        })(stage, 0);
-        return found;
+    function findSession() {
+        try {
+            return HW.app.screenManager.currentScreen.happyWheels.sessionController.session;
+        } catch (e) {
+            return null;
+        }
     }
 
     HW.onReady(function () {
-        HW.log('Gravity Modifier', 'ready — waiting for physics world');
+        HW.log('Gravity Modifier', 'ready — path-based world finder (enter a level to use)');
 
         window.gravity = {
             set(multiplier) {
-                const world = findWorld();
-                if (!world) {
-                    HW.log('Gravity Modifier', 'physics world not found (only works during a level?)');
+                const session = findSession();
+                const world = session && session.m_world;
+                if (!world || !world.m_gravity) {
+                    HW.log('Gravity Modifier', 'physics world not found — enter a level first');
                     return false;
                 }
-                const g = world.GetGravity();
-                const box = window.Box2D || { Common: { Math: { b2Vec2: null } } };
-                // b2Vec2 may not be globally exposed; fall back to duck-typing
-                let vec;
-                try {
-                    vec = new box.Common.Math.b2Vec2(0, HW_GRAVITY * multiplier);
-                } catch (e) {
-                    // If we can't construct a b2Vec2, mutate the existing one
-                    vec = g;
-                    vec.y = HW_GRAVITY * multiplier;
-                }
-                world.SetGravity(vec);
-                HW.log('Gravity Modifier', 'set to ' + multiplier + 'x');
+                const g = world.m_gravity;
+                const y = BASE_GRAVITY * multiplier;
+                if (typeof g.Set === 'function') g.Set(0, y);
+                else { g.x = 0; g.y = y; }
+                // 2.1a port: SetGravity stores the reference — both mutations are belt & braces
+                world.SetGravity(g);
+                HW.log('Gravity Modifier', 'gravity set to ' + multiplier + 'x (' + y.toFixed(2) + ' y/s²)');
                 return true;
+            },
+            get() {
+                const session = findSession();
+                const world = session && session.m_world;
+                if (!world || !world.m_gravity) return null;
+                const g = world.m_gravity;
+                return { x: g.x, y: g.y, multiplier: g.y / BASE_GRAVITY };
             },
             reset() { return this.set(1); },
             moon() { return this.set(0.16); },
             mars() { return this.set(0.38); },
             jupiter() { return this.set(2.53); },
-            zeroG() { return this.set(0); },
-            get() {
-                const world = findWorld();
-                if (!world) return null;
-                const g = world.GetGravity();
-                return { x: g.x, y: g.y, multiplier: g.y / HW_GRAVITY };
-            }
+            zeroG() { return this.set(0); }
         };
-
-        HW.log('Gravity Modifier', 'try: gravity.moon()');
     });
 })();

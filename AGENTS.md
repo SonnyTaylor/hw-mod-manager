@@ -101,8 +101,13 @@ Game path defaults to `C:/SteamLibrary/steamapps/common/Happy Wheels`, override 
 
 ## Known Issues / TODO
 
-- `window.__HW__.app` (PixiJS) discovery: **solved** — preload pre-hook captures the game's real Application subclass (obfuscated `y4`) via a Function.prototype.call trap armed before game scripts boot. Fallbacks: CDP debugger route (blocked by unknown debugger holder), legacy canvas probing (doesn't work on this build).
-- Gravity mod's `findWorld()` walks the stage for `SetGravity` — stage graph IS walkable now (app.stage → children); unverified against a live level, needs testing in a level.
+- **Mod library (shared code between mods)** — next big item. Mods today duplicate UI-panel
+  and settings logic. Plan: `lib/` folder loaded by mod-host before mods, registering into
+  `window.HWLibs`; first libs: `ui` (draggable panel/presets factory), `settings`
+  (namespaced localStorage read/write), `game` (session/world/level accessors from the
+  verified object graph in mods/AGENTS.md).
+- Gravity mod + gravity UI **verified working in-level** (moon/jupiter tested, screenshot 2026-09-25).
 - Settings storage (DevTools → Application → Local Storage): key `option135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target.
-- Mod manager GUI (in-game overlay) not started.
+- Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — gravity-ui's panel is the UI proof-of-concept.
+- CDP debugger-holder mystery: something attaches to the game page at startup and blocks `wc.debugger` (see loader/AGENTS.md).
 - No git remote yet (user wants laptop sync).
