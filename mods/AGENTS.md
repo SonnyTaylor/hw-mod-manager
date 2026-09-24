@@ -25,44 +25,12 @@ mods/<name>/
   - `HW.mods` — registered mod list.
 - Game settings: `window.HW_SETTINGS` (frozen: siteURL etc.). User options live in **localStorage key `option135`** — JSON with `keyCodes` (87=W accelerate, 83=S decelerate, 65=A lean back, 68=D lean forward, 32=primary, 16/17=secondary, 90=Z eject, 67=C camera), `gamepadBindings`, `bloodSetting` (1–5), `use60FPS`.
 
-## Verified game object graph (discovered live via eval bridge, 2026-09-25)
+## Verified game object graph
 
-All names are real runtime properties on the live game (class names are obfuscated
-single/double letters — never rely on them, rely on paths and shapes).
-
-```
-window.__HW__.app                       — the game's own PIXI.Application subclass (obf. y4)
-  .update / .onAssetsLoaded / .updatePixiResolution / .resize
-  .screenManager
-    .screens / .history / .currentScreen (y3 = a screen; in-game screen id string)
-    .currentScreen.happyWheels          — main game screen controller (y3, a display object)
-      .sessionController
-        .session (MA)                   — THE live level session; only exists while a level is loaded
-          .m_world (e)                  — Box2D 2.1a Flash-port world
-            .SetGravity(vec) / .m_gravity {x,y} / .CreateBody / .GetBodyCount / .Step / .m_bodyList
-          ._level (i2)                  — level model (shapes, tokens, jointDictionary...)
-          ._character (ij)              — player character (break limits, limbs, handlers)
-          ._camera (J)                  — camera controller
-          ._particleController / ._contactListener (J) / ._containerSprite
-          .m_physScale = 62.5           — pixels per meter
-          .m_timeStep = 1/30, .frames, .paused, .isMenu, .charIndex
-      ._levelID / ._replayID / ._userID
-  .tempGameScreen (y3)                  — screen container template (options, renderer, stage)
-```
-
-- **Gravity convention**: `world.m_gravity = {x:0, y:10}` — y is DOWN-positive, +10 = Earth.
-  `b2Vec2` has `.Set(x,y)`; `SetGravity` stores the reference (mutate + call both).
-- **Renderer**: PIXI 6 `WebGLRenderer` (obf. t), `renderer._lastObjectRendered` = root drawn
-  (used by the CDP discovery fallback).
-- No `PIXI` global, no `Box2D` global — all classes are inside the webpack bundle
-  (`window.Tmueo2t1b0` chunk table, pushed by dependencies.js as chunk [[520]];
-  the obfuscated index.js consumes it directly — its push is still native Array.push).
-- Reachable globals: `hwNative` (preload IPC bridge), `HW_SETTINGS`, `__SENTRY__`,
-  `Howler/Howl/Sound`, `gsapVersions`, `__core-js_shared__`, `Tmueo2t1b0`, `__HW__`.
-- UI overlay pattern (gravity-ui): plain DOM element appended to `document.body`,
-  `position:fixed; z-index:99999`, state in a namespaced localStorage key. The game's
-  canvas doesn't interfere since our element sits above it; avoid stealing key events
-  (don't focus inputs; document-level key listeners still reach the game).
+See **[docs/game-internals.md](../docs/game-internals.md)** — full verified graph
+(session/world/level/character/camera paths), gravity conventions (y-down +10),
+Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it via
+`HWLibs.game` (see lib below) rather than hard-coding paths in mods.
 
 ## Installed mods
 

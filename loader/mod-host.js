@@ -118,6 +118,9 @@ window.__HW__ = {
 })(0);
 
 console.log('%c[HW]%c Mod runtime injected', 'color:#0af;font-weight:bold', '');
+
+// Shared lib registry — libs in mods/_lib/ populate this before mods load.
+window.HWLibs = window.HWLibs || {};
 `;
 
 // --- Eval bridge ---------------------------------------------------------
@@ -302,6 +305,24 @@ module.exports = async function loadMods(wc) {
         return;
     }
 
+    // Shared libs: mods/_lib/<name>.js, loaded BEFORE mods. Each lib registers
+    // itself into window.HWLibs.<name>; mods declare dependencies via
+    // mod.json "requires": ["name"] and are refused with a clear log if missing.
+    const libDir = path.join(modsDir, '_lib');
+    try {
+        const libFiles = fs.readdirSync(libDir).filter(f => f.endsWith('.js'));
+        for (const f of libFiles) {
+            const libName = f.replace(/\.js$/, '');
+            const code = fs.readFileSync(path.join(libDir, f), 'utf8');
+            const wrapped = `(() => { try { ${code} ; return 'OK|' + (window.HWLibs ? Object.keys(window.HWLibs).join(',') : 'no-registry'); } catch (e) { return 'ERR|' + (e && e.message ? e.message : e); } })()`;
+            const r = await wc.executeJavaScript(wrapped, true);
+            if (String(r).startsWith('OK')) log(`Lib ${libName} loaded [${r}]`);
+            else log(`Lib ${libName} FAILED: ${r}`);
+        }
+    } catch (e) {
+        if (!/ENOENT/.test(e.message)) log('Lib dir read failed:', e.message);
+    }
+
     for (const entry of entries) {
         if (!entry.isDirectory()) continue;
 
@@ -329,6 +350,8 @@ module.exports = async function loadMods(wc) {
 
         const registration = `
             try {
+                const __req = ${JSON.stringify(manifest.requires || [])}.filter(n => !(window.HWLibs && window.HWLibs[n]));
+                if (__req.length) return 'MISSING_LIBS|' + __req.join(',');
                 window.__HW__.mods.push(${JSON.stringify(manifest)});
                 console.log('[HW] Loaded mod: ${manifest.name} v${manifest.version}');
             } catch(e) {
@@ -353,6 +376,8 @@ module.exports = async function loadMods(wc) {
             const result = await wc.executeJavaScript(wrapped, true);
             if (result.startsWith('OK')) {
                 log(`Injected: ${manifest.name} v${manifest.version} [${result}]`);
+            } else if (result.startsWith('MISSING_LIBS')) {
+                log(`Skipped ${manifest.name}: missing libs (${result.slice('MISSING_LIBS|'.length)}) — add them to mods/_lib/`);
             } else {
                 log(`Failed ${manifest.name}: ${result}`);
             }

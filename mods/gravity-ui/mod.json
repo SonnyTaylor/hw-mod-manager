@@ -1,7 +1,8 @@
 {
     "name": "Gravity UI",
-    "version": "1.0.0",
-    "description": "On-screen gravity slider panel (requires Gravity Modifier)",
+    "version": "1.1.0",
+    "description": "On-screen gravity slider panel (requires Gravity Modifier + HWLibs.ui)",
     "author": "HW Mod Manager",
-    "tags": ["gameplay", "ui", "physics"]
+    "tags": ["gameplay", "ui", "physics"],
+    "requires": ["ui"]
 }

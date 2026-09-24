@@ -101,11 +101,10 @@ Game path defaults to `C:/SteamLibrary/steamapps/common/Happy Wheels`, override 
 
 ## Known Issues / TODO
 
-- **Mod library (shared code between mods)** — next big item. Mods today duplicate UI-panel
-  and settings logic. Plan: `lib/` folder loaded by mod-host before mods, registering into
-  `window.HWLibs`; first libs: `ui` (draggable panel/presets factory), `settings`
-  (namespaced localStorage read/write), `game` (session/world/level accessors from the
-  verified object graph in mods/AGENTS.md).
+- **Mod library: DONE (v1)** — loader loads `mods/_lib/*.js` before mods into `window.HWLibs`;
+  mod.json `"requires"` gates injection. Libs: `game` (graph accessors + gravity helpers),
+  `settings` (namespaced localStorage), `ui` (panel factory). Detailed internals now live in
+  `docs/game-internals.md`.
 - Gravity mod + gravity UI **verified working in-level** (moon/jupiter tested, screenshot 2026-09-25).
 - Settings storage (DevTools → Application → Local Storage): key `option135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target.
 - Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — gravity-ui's panel is the UI proof-of-concept.

@@ -31,6 +31,14 @@ Note the captured app is the game's own Application subclass (obfuscated class `
 
 No remote-debugging-port (main.js exits if present). For live JS execution in the page: write JS to `<game>/mods/dev-eval.js`; a 500ms poller runs it via `wc.executeJavaScript` and writes the result to `<game>/mods/dev-eval-result.txt`. Re-running the same content is a no-op (dedupe). This is how the agent can probe the live game from bash. Files are recreated on demand; delete after use.
 
+### Shared libs (mods/_lib/)
+
+- `mods/_lib/<name>.js` files load BEFORE mods (in fs order); each registers into `window.HWLibs.<name>`.
+- Mods declare deps in mod.json: `"requires": ["ui"]` — the host refuses injection with `Skipped <mod>: missing libs (...)` in the log.
+- Current libs: `game` (session/world/level/character/camera accessors + gravity helpers), `settings` (namespaced localStorage), `ui` (panel factory: drag/collapse/persist/sliders/buttons).
+- `hw install-libs` copies project `mods/_lib/` → game; `hw dev` auto-syncs libs every cycle.
+- Editing a lib: change project copy → `hw install-libs` (or any `hw dev`) → relaunch.
+
 ### Rules
 
 - Never use `BrowserWindow.fromWebContents(wc)` — some `did-finish-load` events come from windowless webContents (pitfall #5). Work with `wc` directly.

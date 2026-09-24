@@ -78,6 +78,8 @@ const commands = {
         console.log('🔁 Dev cycle: patch → launch → wait → log\n');
         killGame();
         execSync(`node "${path.join(__dirname, 'patch-game.js')}"`, { stdio: 'inherit' });
+        // auto-sync shared libs so the loop always runs fresh lib code
+        try { commands['install-libs'](); } catch (e) {}
         launchGame();
         console.log('⏳ Waiting 20s for game load...');
         setTimeout(() => {
@@ -129,6 +131,14 @@ const commands = {
         console.log(`📦 Installed ${name} → game mods/`);
     },
 
+    // Copy shared libs (mods/_lib/*.js) into the game.
+    'install-libs'() {
+        const src = path.join(PROJECT_MODS, '_lib');
+        if (!fs.existsSync(src)) die('No mods/_lib/ in project');
+        fs.cpSync(src, path.join(GAME_MODS, '_lib'), { recursive: true });
+        console.log(`📚 Installed libs → game mods/_lib/ (${fs.readdirSync(src).join(', ')})`);
+    },
+
     list() {
         const fmt = (dir, label) => {
             if (!fs.existsSync(dir)) return console.log(`${label}: (missing)`);
@@ -152,6 +162,7 @@ if (!cmd || cmd === 'help' || cmd === '--help') {
   hw dev                patch + launch + show log (main dev loop)
   hw new <name>         scaffold a new mod
   hw install <name>     copy project mod into game
+  hw install-libs       copy shared libs (mods/_lib) into game
   hw list               list mods`);
     process.exit(0);
 }
