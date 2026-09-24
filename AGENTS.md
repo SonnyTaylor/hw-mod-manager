@@ -26,6 +26,7 @@ A modding framework for **Happy Wheels (Steam, v1.99.1)** — an Electron app wr
 8. **The obfuscated game code contains anti-tamper traps**: regex checks on `location.href` (must match `totaljerkface.com`) and `while(...[42]){}` infinite loops. The Steam build loads via a protocol handler that serves local files under the `totaljerkface.com/__hw_app__/` URL, so checks pass naturally. The mod host's URL guard (`/totaljerkface\.com/`) matches this reality.
 9. **Race condition pattern**: `executeJavaScript(RUNTIME)` must be `await`ed before mod injection — mods reference `window.__HW__` at IIFE top-level.
 10. **exe backup**: `Happy Wheels.exe.original` sits next to the exe after patching. Restore flow covers it.
+11. **Steam updates wipe the patch**: launching the game after a Steam update (or Steam re-verification) restores a pristine exe (fuse re-enabled) and a new `app.asar`, silently un-modding the game — symptom: F12 dead + no `mods/hw-mod-host.log`. The patcher now detects a new pristine build (live asar lacks the `mod-host.js` marker and differs from backup) and refreshes the backup instead of downgrading. After any Steam update, just re-run `hw dev`. Never manually `restore` + forget to re-patch.
 
 ## Architecture
 

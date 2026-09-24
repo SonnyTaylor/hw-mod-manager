@@ -15,7 +15,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 // Default Steam path
-const DEFAULT_GAME_PATH = 'C:/SteamLibrary/steamapps/common/Happy Wheels';
+const DEFAULT_GAME_PATH = process.env.HW_GAME_PATH || 'C:/SteamLibrary/steamapps/common/Happy Wheels';
 
 const EXE_NAME = 'Happy Wheels.exe';
 
@@ -65,8 +65,20 @@ class GamePatcher {
         // tool resolves unpacked files from a name-derived sibling directory:
         // app.asar -> app.asar.unpacked. Restoring first keeps re-runs
         // idempotent AND keeps the unpacked path valid.)
-        if (fs.existsSync(this.backupPath)) {
+        //
+        // Steam-update handling: if the live asar is UNPATCHED (no mod-host
+        // marker) and differs from our backup, Steam has shipped a new
+        // pristine build — refresh the backup instead of downgrading.
+        const asarIsPatched = fs.readFileSync(this.asarPath).includes('mod-host.js');
+        if (asarIsPatched && fs.existsSync(this.backupPath)) {
             fs.copyFileSync(this.backupPath, this.asarPath);
+        } else if (!asarIsPatched && fs.existsSync(this.backupPath)) {
+            const current = fs.readFileSync(this.asarPath);
+            const backup = fs.readFileSync(this.backupPath);
+            if (!current.equals(backup)) {
+                console.log('♻️  Steam shipped a new pristine build — refreshing backup...');
+                fs.copyFileSync(this.asarPath, this.backupPath);
+            }
         }
         if (fs.existsSync(this.extractedPath)) {
             fs.rmSync(this.extractedPath, { recursive: true, force: true });
