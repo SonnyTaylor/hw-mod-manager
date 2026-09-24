@@ -163,6 +163,14 @@ try {
             try { __hwLoadMods(wc); }
             catch (err) { console.error('[HW Mod Host] failed:', err); }
         });
+        // Diagnostics: main-frame failures surface in Steam's console log
+        // (console-linux.txt) even when the mod-host log was never written.
+        wc.on('did-fail-load', (ev, code, desc, url, isMain) => {
+            if (isMain) console.error('[HW Mod Host] did-fail-load(main):', code, desc, url);
+        });
+        wc.on('did-start-navigation', (ev, url, isInPlace, isMain) => {
+            if (isMain) console.log('[HW Mod Host] nav(main):', url);
+        });
     });
     console.log('[HW Mod Host] hook installed');
 } catch (err) { console.error('[HW Mod Host] hook error:', err); }
