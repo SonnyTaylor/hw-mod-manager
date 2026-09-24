@@ -17,6 +17,8 @@ const { execSync } = require('child_process');
 // Default Steam path
 const DEFAULT_GAME_PATH = 'C:/SteamLibrary/steamapps/common/Happy Wheels';
 
+const EXE_NAME = 'Happy Wheels.exe';
+
 class GamePatcher {
     constructor(gamePath) {
         this.gamePath = gamePath || DEFAULT_GAME_PATH;
@@ -38,7 +40,14 @@ class GamePatcher {
             process.exit(1);
         }
 
-        // Step 2: Backup original asar
+        // Step 2: Flip the asar-integrity fuse
+        // The game's exe has Electron's EnableEmbeddedAsarIntegrityValidation
+        // fuse enabled — it stores a hash of the asar header and refuses to
+        // boot if the archive is modified. We must disable it BEFORE the
+        // patched asar can load.
+        this.flipFuse();
+
+        // Step 3: Backup original asar
         if (!fs.existsSync(this.backupPath)) {
             console.log('📦 Backing up original app.asar...');
             fs.copyFileSync(this.asarPath, this.backupPath);
@@ -77,8 +86,13 @@ class GamePatcher {
         this.savePatchState();
 
         // Step 7: Repack asar
+        // IMPORTANT: steamworks.js contains native modules (.node/.dll) that
+        // must stay OUTSIDE the asar (Electron can't dlopen from inside an
+        // archive). The original app used app.asar.unpacked for these — the
+        // --unpack-dir flag reproduces that layout. Without it the game
+        // crashes on launch with "The specified module could not be found."
         console.log('📦 Repacking app.asar...');
-        execSync(`npx @electron/asar pack "${this.extractedPath}" "${this.asarPath}"`);
+        execSync(`npx @electron/asar pack "${this.extractedPath}" "${this.asarPath}" --unpack-dir "node_modules/steamworks.js"`);
 
         console.log('\n✅ Patching complete!');
         console.log('\nYour game is now mod-ready. Install mods to the mods/ folder.');
@@ -89,50 +103,108 @@ class GamePatcher {
     patchMainJS() {
         const mainPath = path.join(this.extractedPath, 'electron', 'out', 'main.js');
         let content = fs.readFileSync(mainPath, 'utf8');
+        let changed = [];
 
         // 1. Enable DevTools
-        // Original has devTools:!1 (false), change to devTools:!0 (true)
-        content = content.replace(/devTools:!1/g, 'devTools:!0');
+        if (content.includes('devTools:!1')) {
+            content = content.replace(/devTools:!1/g, 'devTools:!0');
+            changed.push('DevTools enabled');
+        } else if (content.includes('devTools:!0')) {
+            changed.push('DevTools already enabled');
+        }
 
-        // 2. Remove the anti-tamper URL check infinite loops
-        // The pattern is: if(!new RegExp(...).test(...)){while(in‌[42]){}}
-        // We need to remove or neutralize these checks
-        // The safest approach is to make the while loop condition always false
-        // We'll replace the infinite loop pattern with a no-op
-        
-        // Pattern: while(in\u200C[42]){} - this is the infinite loop trap
-        // We need to find and neutralize these
-        const infiniteLoopPattern = /while\([a-zA-Z_$]+\\u200C\[42\]\)\{\}/g;
+        // 2. Hook mod host into the app.
+        // Appended block waits for any BrowserWindow's webContents to finish
+        // loading, then calls mod-host.js which injects the mod runtime + mods.
+        if (!content.includes('mod-host.js')) {
+            const hook = `;
+// === HW MOD HOST HOOK (added by HW-ModManager) ===
+try {
+    const __hwModHost = require('node:path').join(__dirname, 'mod-host.js');
+    const __hwLoadMods = require(__hwModHost);
+    require('electron').webContents.getAllWebContents ? null : null;
+    require('electron').app.on('web-contents-created', (e, wc) => {
+        wc.on('did-finish-load', () => {
+            try { __hwLoadMods(require('electron').BrowserWindow.fromWebContents(wc)); }
+            catch (err) { console.error('[HW Mod Host] failed:', err); }
+        });
+    });
+    console.log('[HW Mod Host] hook installed');
+} catch (err) { console.error('[HW Mod Host] hook error:', err); }
+`;
+            content += hook;
+            changed.push('Mod host hook installed');
+        } else {
+            changed.push('Mod host hook already present');
+        }
+
+        // 3. Neutralize anti-tamper infinite loops (if present in main.js —
+        //    the real ones live in the obfuscated index.js which we leave alone)
+        const before = content;
+        const infiniteLoopPattern = /while\([a-zA-Z_$]+\u200C\[42\]\)\{\}/g;
         content = content.replace(infiniteLoopPattern, '/* MOD: anti-tamper disabled */');
+        if (content !== before) changed.push('Anti-tamper loops neutralized');
 
-        // 3. Add our mod loader path to the preload
-        // We need to find where preload.js is loaded and add our loader
-        // The preload is set in the BrowserWindow options
-        
-        // Save patched file
         fs.writeFileSync(mainPath, content, 'utf8');
-        
-        console.log('   ✓ DevTools enabled');
-        console.log('   ✓ Anti-tamper loops neutralized');
+
+        for (const c of changed) console.log('   ✓ ' + c);
     }
 
     installModLoader() {
-        const loaderDest = path.join(this.extractedPath, 'electron', 'out', 'mod-loader.js');
-        const loaderSrc = path.join(__dirname, '..', 'loader', 'mod-loader.js');
-        
+        const loaderDest = path.join(this.extractedPath, 'electron', 'out', 'mod-host.js');
+        const loaderSrc = path.join(__dirname, '..', 'loader', 'mod-host.js');
+
         if (fs.existsSync(loaderSrc)) {
             fs.copyFileSync(loaderSrc, loaderDest);
-            console.log('   ✓ Mod loader installed');
+            console.log('   ✓ Mod host installed');
         } else {
-            console.log('   ⚠ Mod loader not found, creating placeholder...');
-            // We'll create this next
+            console.log('   ⚠ mod-host.js not found in project loader/ folder');
+            process.exit(1);
         }
 
-        // Also copy the mods directory reference
         const modsDir = path.join(this.gamePath, 'mods');
         if (!fs.existsSync(modsDir)) {
             fs.mkdirSync(modsDir, { recursive: true });
             console.log('   ✓ Created mods/ directory');
+        }
+    }
+
+    flipFuse() {
+        const exePath = path.join(this.gamePath, EXE_NAME);
+        const exeBackup = path.join(this.gamePath, EXE_NAME + '.original');
+
+        if (!fs.existsSync(exePath)) {
+            console.log('⚠  Game exe not found — skipping fuse step');
+            return;
+        }
+
+        // Backup the exe once
+        if (!fs.existsSync(exeBackup)) {
+            fs.copyFileSync(exePath, exeBackup);
+            console.log('   ✓ Backed up original exe');
+        }
+
+        console.log('🔥 Checking Electron fuses...');
+        let fuseState = '';
+        try {
+            fuseState = execSync(`npx @electron/fuses read --app "${exePath}"`, { encoding: 'utf8' });
+        } catch (e) {
+            console.log('   ⚠ Could not read fuses:', e.message.split('\n')[0]);
+            return;
+        }
+
+        if (/EnableEmbeddedAsarIntegrityValidation is Disabled/.test(fuseState)) {
+            console.log('   ✓ Integrity fuse already disabled');
+            return;
+        }
+
+        try {
+            execSync(`npx @electron/fuses write --app "${exePath}" EnableEmbeddedAsarIntegrityValidation=off`, { stdio: 'inherit' });
+            console.log('   ✓ Asar integrity fuse disabled');
+        } catch (e) {
+            console.error('   ❌ Failed to flip fuse — game will crash on launch!');
+            console.error('      Run manually: npx @electron/fuses write --app "Happy Wheels.exe" EnableEmbeddedAsarIntegrityValidation=off');
+            process.exit(1);
         }
     }
 
@@ -165,6 +237,15 @@ class GamePatcher {
         console.log('🔄 Restoring original game...\n');
         
         let restored = false;
+
+        // Method 0: Restore original exe (undoes the fuse flip)
+        const exePath = path.join(this.gamePath, EXE_NAME);
+        const exeBackup = path.join(this.gamePath, EXE_NAME + '.original');
+        if (fs.existsSync(exeBackup)) {
+            fs.copyFileSync(exeBackup, exePath);
+            console.log('   ✓ Happy Wheels.exe restored (fuse re-enabled)');
+            restored = true;
+        }
 
         // Method 1: Restore from asar backup
         if (fs.existsSync(this.backupPath)) {

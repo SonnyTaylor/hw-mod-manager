@@ -1,97 +1,81 @@
 /**
- * Gravity Modifier Mod
- * 
- * Changes the game's gravity. Fun for moon jumps or heavy gravity!
- * 
+ * Gravity Modifier — browser-script style mod
  * Usage in console:
- *   gravity.set(0.5)   // Half gravity (moon-like)
- *   gravity.set(1.0)   // Normal gravity
- *   gravity.set(2.0)   // Double gravity
- *   gravity.reset()    // Back to default
+ *   gravity.set(0.5)   // half gravity
+ *   gravity.moon()     // 0.16x
+ *   gravity.zeroG()    // 0x
+ *   gravity.reset()    // back to normal
  */
+(function () {
+    'use strict';
 
-let api = null;
-const DEFAULT_GRAVITY = 10; // Box2D default gravity
+    const HW = window.__HW__;
+    const HW_GRAVITY = -10; // PixiJS/box2d convention will be confirmed at runtime
 
-module.exports = {
-    name: 'Gravity Modifier',
-    
-    async init(modApi) {
-        api = modApi;
-        api.log('Gravity Modifier', 'Initializing...');
-        
-        // Expose gravity controls
+    function findWorld() {
+        // The Session object holding the Box2D world isn't globally exposed.
+        // Strategy: walk the stage and look for objects with a b2World-like shape.
+        const stage = HW.getStage();
+        if (!stage) return null;
+        let found = null;
+        (function walk(node, depth) {
+            if (found || depth > 6) return;
+            for (const k of Object.getOwnPropertyNames(node)) {
+                try {
+                    const v = node[k];
+                    if (v && typeof v === 'object' && v.SetGravity && v.GetGravity) {
+                        found = v;
+                        return;
+                    }
+                    if (v && typeof v === 'object' && v.m_world && v.m_world.SetGravity) {
+                        found = v.m_world;
+                        return;
+                    }
+                } catch (e) {}
+            }
+            if (node.children) for (const c of node.children) walk(c, depth + 1);
+        })(stage, 0);
+        return found;
+    }
+
+    HW.onReady(function () {
+        HW.log('Gravity Modifier', 'ready — waiting for physics world');
+
         window.gravity = {
-            /**
-             * Set gravity multiplier (1.0 = normal)
-             */
             set(multiplier) {
-                const world = findPhysicsWorld();
+                const world = findWorld();
                 if (!world) {
-                    api.log('Gravity Modifier', 'Physics world not found!');
+                    HW.log('Gravity Modifier', 'physics world not found (only works during a level?)');
                     return false;
                 }
-                
-                const gravity = new Box2D.Common.Math.b2Vec2(0, DEFAULT_GRAVITY * multiplier);
-                world.SetGravity(gravity);
-                api.log('Gravity Modifier', `Gravity set to ${multiplier}x`);
+                const g = world.GetGravity();
+                const box = window.Box2D || { Common: { Math: { b2Vec2: null } } };
+                // b2Vec2 may not be globally exposed; fall back to duck-typing
+                let vec;
+                try {
+                    vec = new box.Common.Math.b2Vec2(0, HW_GRAVITY * multiplier);
+                } catch (e) {
+                    // If we can't construct a b2Vec2, mutate the existing one
+                    vec = g;
+                    vec.y = HW_GRAVITY * multiplier;
+                }
+                world.SetGravity(vec);
+                HW.log('Gravity Modifier', 'set to ' + multiplier + 'x');
                 return true;
             },
-            
-            /**
-             * Reset to default gravity
-             */
-            reset() {
-                this.set(1.0);
-            },
-            
-            /**
-             * Get current gravity
-             */
+            reset() { return this.set(1); },
+            moon() { return this.set(0.16); },
+            mars() { return this.set(0.38); },
+            jupiter() { return this.set(2.53); },
+            zeroG() { return this.set(0); },
             get() {
-                const world = findPhysicsWorld();
+                const world = findWorld();
                 if (!world) return null;
                 const g = world.GetGravity();
-                return {
-                    x: g.x,
-                    y: g.y,
-                    multiplier: g.y / DEFAULT_GRAVITY
-                };
-            },
-            
-            /**
-             * Fun presets
-             */
-            moon: () => window.gravity.set(0.16),
-            mars: () => window.gravity.set(0.38),
-            jupiter: () => window.gravity.set(2.53),
-            zeroG: () => window.gravity.set(0),
+                return { x: g.x, y: g.y, multiplier: g.y / HW_GRAVITY };
+            }
         };
-        
-        api.log('Gravity Modifier', 'Ready! Use gravity.set(multiplier) to change gravity');
-    }
-};
 
-/**
- * Try to find the Box2D physics world
- */
-function findPhysicsWorld() {
-    // Method 1: Through PixiJS stage (if game exposes it)
-    const stage = api.getStage();
-    if (stage) {
-        // The game might store session/world on stage
-        if (stage.session?.m_world) return stage.session.m_world;
-        if (stage.__session?.m_world) return stage.__session.m_world;
-    }
-    
-    // Method 2: Search window for Box2D world
-    // This is hacky but sometimes necessary
-    for (const key of Object.keys(window)) {
-        const obj = window[key];
-        if (obj && obj.m_world && obj.m_world.SetGravity) {
-            return obj.m_world;
-        }
-    }
-    
-    return null;
-}
+        HW.log('Gravity Modifier', 'try: gravity.moon()');
+    });
+})();

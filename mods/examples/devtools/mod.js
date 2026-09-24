@@ -1,99 +1,51 @@
 /**
- * DevTools Helper Mod
- * 
- * Provides utility functions for inspecting and debugging the game.
- * Access via window.devTools in the browser console.
+ * DevTools Helper — browser-script style mod
+ * Exposes window.devTools for inspecting the game from the console.
  */
+(function () {
+    'use strict';
 
-let api = null;
+    const HW = window.__HW__;
 
-module.exports = {
-    name: 'DevTools Helper',
-    
-    async init(modApi) {
-        api = modApi;
-        api.log('DevTools Helper', 'Initializing...');
-        
-        // Set up debug utilities
+    HW.onReady(function (app) {
+        HW.log('DevTools Helper', 'game ready, exposing window.devTools');
+
         window.devTools = {
-            /**
-             * Get the current PixiJS app
-             */
-            getPixiApp: () => api.getPixiApp(),
-            
-            /**
-             * Get the game stage
-             */
-            getStage: () => api.getStage(),
-            
-            /**
-             * List all display objects on stage
-             */
-            listStageChildren: () => {
-                const stage = api.getStage();
+            getApp: () => window.__HW__.app,
+            getStage: () => window.__HW__.app && window.__HW__.app.stage,
+
+            listStageChildren() {
+                const stage = this.getStage();
                 if (!stage) return 'Stage not available';
-                
-                const children = [];
-                const traverse = (container, depth = 0) => {
+                const out = [];
+                (function walk(container, depth) {
                     for (const child of container.children || []) {
-                        children.push({
-                            name: child.constructor.name,
+                        out.push({
                             type: child.constructor.name,
                             visible: child.visible,
-                            x: child.x,
-                            y: child.y,
-                            width: child.width,
-                            height: child.height,
+                            x: Math.round(child.x),
+                            y: Math.round(child.y),
+                            children: (child.children || []).length,
                             depth
                         });
-                        if (child.children && child.children.length > 0) {
-                            traverse(child, depth + 1);
+                        if (child.children && child.children.length && depth < 4) {
+                            walk(child, depth + 1);
                         }
                     }
-                };
-                traverse(stage);
-                return children;
+                })(stage, 0);
+                return out;
             },
-            
-            /**
-             * Get game settings
-             */
-            getSettings: () => api.getSettings(),
-            
-            /**
-             * Monitor physics bodies (if Box2D is exposed)
-             */
-            getPhysicsWorld: () => {
-                // Box2D world might be accessible through game objects
-                const stage = api.getStage();
-                if (stage && stage.session) {
-                    return stage.session.m_world;
-                }
-                return null;
-            },
-            
-            /**
-             * Take a screenshot
-             */
-            screenshot: () => {
-                const app = api.getPixiApp();
+
+            getSettings: () => window.HW_SETTINGS || {},
+            listMods: () => window.__HW__.mods.map(m => m.name + ' v' + m.version),
+
+            screenshot() {
+                const app = this.getApp();
                 if (!app) return null;
                 return app.renderer.extract.canvas(app.stage);
-            },
-            
-            /**
-             * List loaded mods
-             */
-            listMods: () => {
-                return window.__HW_MOD_LOADER__?.mods || [];
             }
         };
-        
-        // Wait for game to be ready
-        api.onGameReady((pixiApp) => {
-            api.log('DevTools Helper', 'Game is ready!');
-            api.log('DevTools Helper', 'Use window.devTools to inspect the game');
-            api.log('DevTools Helper', 'Example: devTools.listStageChildren()');
-        });
-    }
-};
+
+        HW.log('DevTools Helper', 'try: devTools.listStageChildren()');
+    });
+})();
