@@ -47,8 +47,46 @@ window.__HW__ = {
     getStage() { return this.app && this.app.stage; },
     log(mod, ...args) {
         console.log('%c[HW]%c ' + mod + ':', 'color:#0af;font-weight:bold', '', ...args);
+    },
+
+    // Called by the CDP discovery loop once the live renderer is found.
+    _setRenderer(renderer) {
+        if (this.ready) return true;
+        const app = {
+            isShim: true,
+            renderer,
+            get stage() { return renderer._lastObjectRendered; },
+            get ticker() { return renderer.ticker || null; },
+            get view() { return renderer.view; },
+        };
+        return this._setApp(app);
+    },
+
+    // Called when the preload pre-hook captured the real Application.
+    _setApp(app) {
+        if (this.ready) return true;
+        this.app = app;
+        this.ready = true;
+        this._readyCallbacks.forEach(cb => { try { cb(app); } catch (e) { console.error('[HW] onReady error:', e); } });
+        this._readyCallbacks.length = 0;
+        console.log('%c[HW]%c App discovered — ready', 'color:#0af;font-weight:bold');
+        return true;
     }
 };
+
+// Poll the preload pre-hook's capture slot. The hook only catches the app
+// once a ticker frame fires after game scripts run; retry until found.
+(function checkDiscovery() {
+    try {
+        const d = window.__HW_DISCOVERY__;
+        if (d && d.app && !window.__HW__.ready) {
+            window.__HW__._setApp(d.app);
+            return;
+        }
+        if (window.__HW__.ready) return;
+    } catch (e) {}
+    setTimeout(checkDiscovery, 500);
+})();
 
 // Locate the PixiJS Application. The game doesn't expose it globally,
 // so we probe for it. PixiJS v6 attaches nothing by default, but the
@@ -82,6 +120,134 @@ window.__HW__ = {
 console.log('%c[HW]%c Mod runtime injected', 'color:#0af;font-weight:bold', '');
 `;
 
+// --- Eval bridge ---------------------------------------------------------
+// No remote-debugging-port (main.js exits if it's present), so live JS
+// execution in the game page is done via a file channel: write JS to
+// <game>/mods/dev-eval.js, this poller runs it in the page's main world,
+// and the result lands in <game>/mods/dev-eval-result.txt.
+// Re-running the same content is a no-op (content hash dedupe).
+function startEvalBridge(wc) {
+    const evalFile = path.join(getModsDir(), 'dev-eval.js');
+    const resultFile = path.join(getModsDir(), 'dev-eval-result.txt');
+    let lastRun = null;
+    let stopped = false;
+    wc.once('destroyed', () => { stopped = true; });
+    const timer = setInterval(() => {
+        if (stopped || wc.isDestroyed()) { clearInterval(timer); return; }
+        let code;
+        try { code = fs.readFileSync(evalFile, 'utf8'); } catch { return; }
+        if (!code || !code.trim() || code === lastRun) return;
+        lastRun = code;
+        wc.executeJavaScript(code, true).then(res => {
+            const out = `=== ${new Date().toISOString()} ===\n${typeof res === 'string' ? res : JSON.stringify(res, null, 1)}`;
+            fs.writeFileSync(resultFile, out + '\n');
+            log('Eval bridge: OK (' + out.length + ' chars)');
+        }).catch(e => {
+            const msg = `=== ${new Date().toISOString()} ===\nERROR: ${e && e.message ? e.message : String(e)}`;
+            fs.writeFileSync(resultFile, msg + '\n');
+            log('Eval bridge: FAILED: ' + (e && e.message ? e.message : e));
+        });
+    }, 500);
+}
+
+// --- Live PixiJS discovery via CDP ---------------------------------------
+// The obfuscated game keeps the PIXI.Application inside closures — no global,
+// no canvas back-reference. But Pixi's InteractionManager attaches event
+// listeners to the canvas, and those handlers are BOUND functions. Chrome
+// DevTools Protocol exposes bound functions' internal slots:
+//   handler -> [[BoundThis]] -> InteractionManager -> .renderer -> live
+//   WebGL renderer -> _lastObjectRendered -> the root stage container.
+// Uses webContents.debugger (no remote-debugging-port needed). Note: fails
+// while the user's own DevTools window is attached (one debugger per target).
+function dbgSend(dbg, method, params) {
+    return new Promise((resolve, reject) => {
+        dbg.sendCommand(method, params || {}, (err, result) => {
+            if (err) reject(new Error(typeof err === 'string' ? err : JSON.stringify(err)));
+            else resolve(result);
+        });
+    });
+}
+
+async function discoverAppViaCDP(wc) {
+    // A lingering DevTools client (even a hidden/detached window) blocks
+    // our attach — close it first and restore it after discovery.
+    const devtoolsWasOpen = (() => { try { return wc.isDevToolsOpened(); } catch (e) { return false; } })();
+    if (devtoolsWasOpen) {
+        log('CDP: DevTools is open — closing temporarily for attach');
+        try { wc.closeDevTools(); } catch (e) {}
+        await new Promise(r => setTimeout(r, 700));
+    }
+    const dbg = wc.debugger;
+    try { dbg.attach('1.3'); } catch (e) {
+        log('CDP attach failed:', e.message, '| devtoolsOpen:', devtoolsWasOpen);
+        return false;
+    }
+    try {
+        await dbgSend(dbg, 'Runtime.enable');
+        const ev = await dbgSend(dbg, 'Runtime.evaluate', {
+            expression: "document.querySelector('canvas')",
+            returnByValue: false,
+        });
+        const canvasId = ev.result && ev.result.objectId;
+        if (!canvasId) throw new Error('no canvas found');
+
+        const el = await dbgSend(dbg, 'DOMDebugger.getEventListeners', { objectId: canvasId });
+        const listeners = (el && el.listeners) || [];
+        if (!listeners.length) throw new Error('no listeners on canvas yet');
+
+        for (const l of listeners) {
+            const handlerId = l.handler && l.handler.objectId;
+            if (!handlerId) continue;
+            let props;
+            try { props = await dbgSend(dbg, 'Runtime.getProperties', { objectId: handlerId }); }
+            catch (e) { continue; }
+            const boundThis = (props.internalProperties || []).find(p => p.name === '[[BoundThis]]');
+            if (!boundThis || !boundThis.objectId) continue;
+
+            const check = await dbgSend(dbg, 'Runtime.callFunctionOn', {
+                objectId: boundThis.objectId,
+                functionDeclaration: 'function () {' +
+                    'try {' +
+                    '  if (this.renderer && this.renderer.view) {' +
+                    '    window.__HW__._setRenderer(this.renderer);' +
+                    '    return "RENDERER_OK|" + (this.renderer._lastObjectRendered ? "stage" : "no-stage");' +
+                    '  }' +
+                    '  return "no-renderer:" + Object.keys(this).slice(0, 12).join(",");' +
+                    '} catch (e) { return "err:" + e.message; }' +
+                    '}',
+                returnByValue: true,
+            });
+            const val = check.result && check.result.value;
+            log(`CDP: listener "${l.type}" -> ${val}`);
+            if (typeof val === 'string' && val.startsWith('RENDERER_OK')) return true;
+        }
+        throw new Error('no pixi renderer found via listeners');
+    } finally {
+        try { dbg.detach(); } catch (e) {}
+        if (devtoolsWasOpen) {
+            setTimeout(() => { try { wc.openDevTools({ mode: 'detach' }); } catch (e) {} }, 300);
+        }
+    }
+}
+
+// Poll discovery until the app is found. Handles the async race (the game
+// creates the app some time after did-finish-load) and DevTools conflicts
+// (user's F12 window holds the debugger — retries until it is closed).
+function startDiscoveryLoop(wc) {
+    let i = 0;
+    const maxTries = 150; // 4s interval → ~10 minutes of patience
+    const timer = setInterval(async () => {
+        if (wc.isDestroyed() || wc.__hwDiscoveryDone) { clearInterval(timer); return; }
+        try {
+            const ok = await discoverAppViaCDP(wc);
+            if (ok) { wc.__hwDiscoveryDone = true; clearInterval(timer); log('PixiJS app discovered via CDP'); }
+        } catch (e) {
+            if (i % 5 === 0) log(`CDP discovery attempt ${i + 1} failed: ${e.message}`);
+        }
+        if (++i >= maxTries) { clearInterval(timer); log('CDP discovery gave up'); }
+    }, 4000);
+}
+
 module.exports = async function loadMods(wc) {
     // Only inject into the actual game page — skip service workers,
     // devtools pages, and other headless webContents Electron spawns.
@@ -111,6 +277,12 @@ module.exports = async function loadMods(wc) {
     } catch (e) {
         log('F12 registration failed:', e.message);
     }
+
+    // Start the eval bridge (see startEvalBridge comment).
+    startEvalBridge(wc);
+
+    // Start CDP-based PixiJS discovery (see startDiscoveryLoop comment).
+    startDiscoveryLoop(wc);
 
     // Inject runtime first and WAIT for it — mods reference window.__HW__
     // at the top of their IIFE, so a race here breaks every mod.

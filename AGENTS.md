@@ -27,6 +27,11 @@ A modding framework for **Happy Wheels (Steam, v1.99.1)** — an Electron app wr
 9. **Race condition pattern**: `executeJavaScript(RUNTIME)` must be `await`ed before mod injection — mods reference `window.__HW__` at IIFE top-level.
 10. **exe backup**: `Happy Wheels.exe.original` sits next to the exe after patching. Restore flow covers it.
 11. **Steam updates wipe the patch**: launching the game after a Steam update (or Steam re-verification) restores a pristine exe (fuse re-enabled) and a new `app.asar`, silently un-modding the game — symptom: F12 dead + no `mods/hw-mod-host.log`. The patcher now detects a new pristine build (live asar lacks the `mod-host.js` marker and differs from backup) and refreshes the backup instead of downgrading. After any Steam update, just re-run `hw dev`. Never manually `restore` + forget to re-patch.
+12. **`sandbox:true` forces the preload into an isolated world** — Electron ignores `contextIsolation:false` (or breaks hwNative exposure) when sandbox is on. To run our preload hook in the page's MAIN world, BOTH `sandbox:!0→!1` AND `contextIsolation:!0→!1` must be patched in main.js (nodeIntegration stays false, so the page world still has no Node).
+13. **The PIXI.Application is unreachable from page JS after boot** — no global, no canvas back-ref; canvas probing (own props walk) finds nothing. Capture it in the preload BEFORE game scripts via the Function.prototype.call trap (see loader/AGENTS.md). Symptom of a lost capture: `__HW__.ready === false` forever, mods' `onReady` never fires, `window.devTools` undefined in console.
+14. **Something holds the CDP debugger on the game page at startup** — `wc.debugger.attach()` fails with "Debugger is already attached to the target" while `wc.isDevToolsOpened()` is false. Cause unknown; CDP-based discovery is a fallback only.
+15. **`setx HW_GAME_PATH` doesn't affect already-running shells** — env vars set with setx only reach NEW processes; tools now auto-detect the Steam install (`Program Files (x86)` path) so this rarely matters.
+16. **hw.js `killGame()` uses `sleep 2` via bash shell** — works, but flaky across machines without bash; the 2s wait matters because Windows needs time to release file locks before re-patching.
 
 ## Architecture
 
@@ -96,8 +101,8 @@ Game path defaults to `C:/SteamLibrary/steamapps/common/Happy Wheels`, override 
 
 ## Known Issues / TODO
 
-- `window.__HW__.app` (PixiJS) discovery is canvas-probing; may need a better hook once we map the live object graph via DevTools.
-- Gravity mod's `findWorld()` walks the stage for `SetGravity` — unverified against live game; needs testing in a level.
+- `window.__HW__.app` (PixiJS) discovery: **solved** — preload pre-hook captures the game's real Application subclass (obfuscated `y4`) via a Function.prototype.call trap armed before game scripts boot. Fallbacks: CDP debugger route (blocked by unknown debugger holder), legacy canvas probing (doesn't work on this build).
+- Gravity mod's `findWorld()` walks the stage for `SetGravity` — stage graph IS walkable now (app.stage → children); unverified against a live level, needs testing in a level.
 - Settings storage (DevTools → Application → Local Storage): key `option135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target.
 - Mod manager GUI (in-game overlay) not started.
 - No git remote yet (user wants laptop sync).

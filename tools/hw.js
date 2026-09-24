@@ -19,7 +19,10 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const GAME_PATH = process.env.HW_GAME_PATH || 'C:/SteamLibrary/steamapps/common/Happy Wheels';
+const GAME_PATH = process.env.HW_GAME_PATH
+    || ['C:/SteamLibrary/steamapps/common/Happy Wheels', 'C:/Program Files (x86)/Steam/steamapps/common/Happy Wheels']
+        .find(p => fs.existsSync(path.join(p, 'Happy Wheels.exe')))
+    || 'C:/SteamLibrary/steamapps/common/Happy Wheels';
 const GAME_EXE = path.join(GAME_PATH, 'Happy Wheels.exe');
 const MODS_LOG = path.join(GAME_PATH, 'mods', 'hw-mod-host.log');
 const PROJECT_MODS = path.join(PROJECT_ROOT, 'mods');

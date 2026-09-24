@@ -14,10 +14,17 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// Default Steam path
-const DEFAULT_GAME_PATH = process.env.HW_GAME_PATH || 'C:/SteamLibrary/steamapps/common/Happy Wheels';
-
 const EXE_NAME = 'Happy Wheels.exe';
+
+// Default Steam path (HW_GAME_PATH env overrides; auto-detect falls back
+// through common Steam install locations)
+const AUTO_DETECT_PATHS = [
+    'C:/SteamLibrary/steamapps/common/Happy Wheels',
+    'C:/Program Files (x86)/Steam/steamapps/common/Happy Wheels',
+];
+const DEFAULT_GAME_PATH = process.env.HW_GAME_PATH
+    || AUTO_DETECT_PATHS.find(p => fs.existsSync(path.join(p, EXE_NAME)))
+    || AUTO_DETECT_PATHS[0];
 
 class GamePatcher {
     constructor(gamePath) {
@@ -128,6 +135,27 @@ class GamePatcher {
             changed.push('DevTools already enabled');
         }
 
+        // 1b. Disable contextIsolation AND sandbox so our preload hook runs in
+        // the page's MAIN world before the game scripts boot — that's the only
+        // moment we can install prototype traps that capture the PIXI
+        // Application (the obfuscated game keeps it in closures, unreachable
+        // afterwards). nodeIntegration stays false, so the page world itself
+        // still has no Node access; only our preload shell code does.
+        let prefsPatched = false;
+        if (content.includes('contextIsolation:!0')) {
+            content = content.replace(/contextIsolation:!0/g, 'contextIsolation:!1');
+            prefsPatched = true;
+        }
+        if (content.includes('sandbox:!0')) {
+            content = content.replace(/sandbox:!0/g, 'sandbox:!1');
+            prefsPatched = true;
+        }
+        if (prefsPatched) {
+            changed.push('contextIsolation + sandbox disabled (preload pre-hook world)');
+        } else if (content.includes('contextIsolation:!1')) {
+            changed.push('contextIsolation/sandbox already disabled');
+        }
+
         // 2. Hook mod host into the app.
         // Appended block waits for any BrowserWindow's webContents to finish
         // loading, then calls mod-host.js which injects the mod runtime + mods.
@@ -161,7 +189,66 @@ try {
 
         fs.writeFileSync(mainPath, content, 'utf8');
 
+        // 1c. Append the pre-hook to the game's preload (runs in main world
+        // before dependencies.js/index.js execute).
+        this.patchPreload();
+
         for (const c of changed) console.log('   ✓ ' + c);
+    }
+
+    patchPreload() {
+        const preloadPath = path.join(this.extractedPath, 'electron', 'out', 'preload.js');
+        let content = fs.readFileSync(preloadPath, 'utf8');
+        let patched = false;
+
+        // Harden hwNative exposure: with contextIsolation off, contextBridge
+        // may not behave — fall back to direct assignment on failure.
+        const exposePattern = 'e.contextBridge.exposeInMainWorld("hwNative",n)';
+        if (content.includes(exposePattern)) {
+            content = content.replace(
+                exposePattern,
+                'try{e.contextBridge.exposeInMainWorld("hwNative",n)}catch(err){window.hwNative=n}'
+            );
+            patched = true;
+        }
+
+        const MARKER = 'HW MOD PRE-HOOK';
+        if (content.includes(MARKER)) {
+            if (patched) fs.writeFileSync(preloadPath, content, 'utf8');
+            return;
+        }
+
+        // Pre-hook is PREPENDED so it runs before the game's own preload code
+        // and before any game dependency executes.
+        const hook = `// === ${MARKER} (added by HW-ModManager) ===
+// Runs in the page's main world BEFORE the game scripts. Pixi's Ticker
+// invokes listeners via fn.call(app) every frame — a temporary
+// Function.prototype.call trap captures the Application instance that the
+// obfuscated game otherwise keeps hidden in closures.
+(function () {
+    try {
+        window.__HW_DISCOVERY__ = { app: null };
+        const origCall = Function.prototype.call;
+        let done = false;
+        Function.prototype.call = function (...args) {
+            if (!done) {
+                try {
+                    const c = args[0];
+                    if (c && c.stage && c.renderer) {
+                        done = true;
+                        window.__HW_DISCOVERY__.app = c;
+                        Function.prototype.call = origCall;
+                    }
+                } catch (e) {}
+            }
+            return origCall.apply(this, args);
+        };
+        setTimeout(function () { if (!done) Function.prototype.call = origCall; }, 60000);
+    } catch (e) {}
+})();
+`;
+        fs.writeFileSync(preloadPath, hook + content, 'utf8');
+        console.log('   ✓ Preload pre-hook installed');
     }
 
     installModLoader() {
