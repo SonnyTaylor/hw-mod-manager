@@ -110,7 +110,3 @@ Game path defaults to `C:/SteamLibrary/steamapps/common/Happy Wheels`, override 
 - Settings storage (DevTools → Application → Local Storage): key `option135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target.
 - Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — gravity-ui's panel is the UI proof-of-concept.
 - CDP debugger-holder mystery: something attaches to the game page at startup and blocks `wc.debugger` (see loader/AGENTS.md).
-- Sync setup: `origin` = github.com/SonnyTaylor/hw-mod-manager.git. The repo lives on multiple machines
-  (Windows + Linux). GitHub auth currently lives only in the Windows-side gh credential helper — other
-  machines can't push until they get a PAT or SSH key. Until then, sync by fetching directly from the
-  other machine's working copy: `git fetch <path-to-other-clone> main && git merge --ff-only FETCH_HEAD`.
