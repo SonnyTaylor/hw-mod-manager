@@ -6,7 +6,7 @@ Runtime injected into the game's Electron main process.
 
 ## mod-host.js
 
-Runs in the **main process** (full Node access). It is copied into the asar at `electron/out/mod-host.js` by the patcher — **edit the project copy, then repack** (`node tools/hw.js dev`).
+Runs in the **main process** (full Node access). It is copied into the asar at `electron/out/mod-host.js` by the patcher — **edit the project copy, then repack** (`node tools/hw.js dev`). Platform-neutral: `process.resourcesPath`/`..` resolves to the game root on both Windows and the native Linux build (verified on Linux 2026-09-25).
 
 ### Flow
 

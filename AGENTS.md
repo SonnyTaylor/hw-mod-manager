@@ -12,12 +12,25 @@ Guidance for AI agents (and humans) working in this repository. Read this fully 
 
 A modding framework for **Happy Wheels (Steam, v1.99.1)** — an Electron app wrapping an HTML5 game built on PixiJS 6 + a bug-preserved Box2D port. We patch the Electron shell to inject a mod host that loads user mods into the game's page context at runtime.
 
+**Two platform builds exist and both are supported** (see `tools/platform.js`):
+
+| | Windows | Linux (native, no Proton) |
+|---|---|---|
+| Boot binary | `Happy Wheels.exe` | `happy-wheels-bin` (launched via the `happy-wheels` sh wrapper, which adds `--ozone-platform=x11`) |
+| Steam launch | exe directly | `steam -applaunch 4705510` (direct exec bounces back to Steam — see pitfall 17) |
+| Steam install root | `C:/SteamLibrary/steamapps/common/Happy Wheels` | `~/.local/share/Steam/steamapps/common/Happy Wheels` |
+| Saves | `%APPDATA%/HappyWheels` | `~/.config/HappyWheels` |
+
+Everything else is identical: same `app.asar` layout, same fuse, same obfuscated
+`resources/webroot/js/index.js`, same `totaljerkface.com/__hw_app__/` protocol — the mod host,
+mods, and libs are platform-neutral.
+
 **Related research** lives at `~/Downloads/HW_Research/` (see `FINDINGS.md` there): decompiled Flash AS3 source (the original game logic), an older obfuscated HTML5 build, and notes. The Steam version's game code (`resources/webroot/js/index.js`, 1.6MB) is intentionally obfuscated (zero-width chars + constant table) — **we never deobfuscate it; we hook it at runtime instead.**
 
 ## Critical Knowledge (hard-won — do not rediscover these)
 
-1. **Electron fuse `EnableEmbeddedAsarIntegrityValidation` is ON.** The exe stores a hash of the asar header. Any modified `app.asar` → instant boot crash ("Integrity check failed"). Fix: `npx @electron/fuses write --app "Happy Wheels.exe" EnableEmbeddedAsarIntegrityValidation=off`. The patcher does this automatically and backs up the exe.
-2. **Native modules must NOT be packed inside app.asar.** `steamworks.js` ships `.node` + `steam_api64.dll`. If packed inside, the game crashes on launch: "The specified module could not be found" (dialog box, temp `.tmp.node` path in the stack). Fix: pack with `--unpack-dir "node_modules/steamworks.js"`.
+1. **Electron fuse `EnableEmbeddedAsarIntegrityValidation` is ON in the boot binary** (`Happy Wheels.exe` on Windows, `happy-wheels-bin` on Linux). The exe stores a hash of the asar header. Any modified `app.asar` → instant boot crash ("Integrity check failed"). Fix: `npx @electron/fuses write --app <boot-binary> EnableEmbeddedAsarIntegrityValidation=off` — works on both the PE and the ELF. The patcher does this automatically and backs up the binary.
+2. **Native modules must NOT be packed inside app.asar.** `steamworks.js` ships `.node` + native libs (`steam_api64.dll` on Windows, `dist/linux64/libsteam_api.so` + `steamworksjs.linux-x64-gnu.node` on Linux). If packed inside, the game crashes on launch: "The specified module could not be found" (dialog box, temp `.tmp.node` path in the stack). Fix: pack with `--unpack-dir "node_modules/steamworks.js"`.
 3. **asar extraction resolves unpacked files from a name-derived sibling**: extracting `app.asar.original` looks for `app.asar.original.unpacked/` (doesn't exist → ENOENT). Always restore `app.asar` from backup first, then extract from `app.asar` so its `app.asar.unpacked/` sibling resolves. The patcher handles this; don't "simplify" it away.
 4. **The game window uses `sandbox:true, contextIsolation:true, nodeIntegration:false`.** The renderer and even the preload have no usable Node (`fs`/`path` unavailable in sandboxed preload). Mods are therefore injected from the **main process** via `webContents.executeJavaScript()` — which runs in the page's **main world** with full DOM/game access.
 5. **`did-finish-load` fires for webContents with no BrowserWindow** (service workers etc.). Never `BrowserWindow.fromWebContents(wc)` without a null check — pass the `wc` itself through the hook.
@@ -26,12 +39,13 @@ A modding framework for **Happy Wheels (Steam, v1.99.1)** — an Electron app wr
 8. **The obfuscated game code contains anti-tamper traps**: regex checks on `location.href` (must match `totaljerkface.com`) and `while(...[42]){}` infinite loops. The Steam build loads via a protocol handler that serves local files under the `totaljerkface.com/__hw_app__/` URL, so checks pass naturally. The mod host's URL guard (`/totaljerkface\.com/`) matches this reality.
 9. **Race condition pattern**: `executeJavaScript(RUNTIME)` must be `await`ed before mod injection — mods reference `window.__HW__` at IIFE top-level.
 10. **exe backup**: `Happy Wheels.exe.original` sits next to the exe after patching. Restore flow covers it.
-11. **Steam updates wipe the patch**: launching the game after a Steam update (or Steam re-verification) restores a pristine exe (fuse re-enabled) and a new `app.asar`, silently un-modding the game — symptom: F12 dead + no `mods/hw-mod-host.log`. The patcher now detects a new pristine build (live asar lacks the `mod-host.js` marker and differs from backup) and refreshes the backup instead of downgrading. After any Steam update, just re-run `hw dev`. Never manually `restore` + forget to re-patch.
+11. **Steam updates wipe the patch**: launching the game after a Steam update (or Steam re-verification) restores a pristine binary (fuse re-enabled) and a new `app.asar`, silently un-modding the game — symptom: F12 dead + no `mods/hw-mod-host.log`. The patcher now detects a new pristine build (live asar lacks the `mod-host.js` marker and differs from backup) and refreshes the backup instead of downgrading. After any Steam update, just re-run `hw dev`. Never manually `restore` + forget to re-patch.
 12. **`sandbox:true` forces the preload into an isolated world** — Electron ignores `contextIsolation:false` (or breaks hwNative exposure) when sandbox is on. To run our preload hook in the page's MAIN world, BOTH `sandbox:!0→!1` AND `contextIsolation:!0→!1` must be patched in main.js (nodeIntegration stays false, so the page world still has no Node).
-13. **The PIXI.Application is unreachable from page JS after boot** — no global, no canvas back-ref; canvas probing (own props walk) finds nothing. Capture it in the preload BEFORE game scripts via the Function.prototype.call trap (see loader/AGENTS.md). Symptom of a lost capture: `__HW__.ready === false` forever, mods' `onReady` never fires, `window.devTools` undefined in console.
-14. **Something holds the CDP debugger on the game page at startup** — `wc.debugger.attach()` fails with "Debugger is already attached to the target" while `wc.isDevToolsOpened()` is false. Cause unknown; CDP-based discovery is a fallback only.
-15. **`setx HW_GAME_PATH` doesn't affect already-running shells** — env vars set with setx only reach NEW processes; tools now auto-detect the Steam install (`Program Files (x86)` path) so this rarely matters.
-16. **hw.js `killGame()` uses `sleep 2` via bash shell** — works, but flaky across machines without bash; the 2s wait matters because Windows needs time to release file locks before re-patching.
+13. **The PIXI.Application is unreachable from page JS after boot** — no global, no canvas back-ref; canvas probing (own props walk) finds nothing. Capture it in the preload BEFORE game scripts via the Function.prototype.call trap (see loader/AGENTS.md). Symptom of a lost capture: `__HW__.ready === false` forever, mods' `onReady` never fires, `window.devTools` undefined in console. (The captured app's obfuscated class name differs per build — `y4` on Windows, `D4` on the Linux build — never rely on names.)
+14. **Something holds the CDP debugger on the game page at startup** — `wc.debugger.attach()` fails with "Debugger is already attached to the target" while `wc.isDevToolsOpened()` is false. Cause unknown; **reproduces on Linux too**. CDP-based discovery is a fallback only.
+15. **`setx HW_GAME_PATH` doesn't affect already-running shells** (Windows) — env vars set with setx only reach NEW processes; tools auto-detect the Steam install on both platforms so this rarely matters.
+16. **`hw.js killGame()` uses `sleep 2` via bash shell** — works on both platforms, but the 2s wait matters because the OS needs time to release file locks before re-patching. On Linux the kill is `pkill -f '[h]appy-wheels-bin'` — the bracket keeps the pattern from matching the pkill process itself.
+17. **The Linux build cannot be launched by exec'ing the binary** — steamworks `restartAppIfNecessary(4705510)` detects it wasn't started by Steam and bounces it back through Steam (hang/crash loop risk). Always launch via `steam -applaunch 4705510`; the `happy-wheels` wrapper (`--ozone-platform=x11`, Steam overlay disabled via `unset LD_PRELOAD`) runs as Steam's launch target. Also: a **cold** Steam start can take ~60s before the game page loads — the `hw dev` wait is 60s on Linux for this reason.
 
 ## Architecture
 
@@ -57,6 +71,7 @@ A modding framework for **Happy Wheels (Steam, v1.99.1)** — an Electron app wr
 | Path | Purpose |
 |------|---------|
 | `tools/patch-game.js` | Patcher: exe backup + fuse flip, asar backup/extract/patch/pack, restore, status. Idempotent. |
+| `tools/platform.js` | Shared platform/install detection: boot-binary name per OS, Steam paths (incl. Flatpak), appid, `detectGamePath()`. |
 | `tools/hw.js` | Dev CLI (`hw dev` is the main loop). |
 | `loader/mod-host.js` | Main-process mod host (copied into asar at `electron/out/`). |
 | `mods/<name>/mod.json` | Mod manifest: name, version, description, author, tags. |
@@ -74,7 +89,7 @@ node tools/hw.js restore  # full restore (asar + exe)
 node tools/hw.js status
 ```
 
-Game path defaults to `C:/SteamLibrary/steamapps/common/Happy Wheels`, override with `HW_GAME_PATH` env var or positional arg.
+Game path auto-detected per platform (see `tools/platform.js`); override with `HW_GAME_PATH` env var or positional arg.
 
 ## Testing Changes to mod-host.js
 
@@ -102,6 +117,7 @@ Game path defaults to `C:/SteamLibrary/steamapps/common/Happy Wheels`, override 
 
 ## Known Issues / TODO
 
+- **Linux (native build, appid 4705510): verified working** (2026-09-25) — fuse flip on `happy-wheels-bin`, patched asar boots, runtime + `_lib` injected, eval bridge confirmed `__HW__.ready === true` with the app captured (obf. class `D4`). Game must be launched through Steam; a network outage stalls the page before `did-finish-load` (no mod-host log) — retry when connectivity is stable.
 - **Mod library: DONE (v1)** — loader loads `mods/_lib/*.js` before mods into `window.HWLibs`;
   mod.json `"requires"` gates injection. Libs: `game` (graph accessors + gravity helpers),
   `settings` (namespaced localStorage), `ui` (panel factory). Detailed internals now live in

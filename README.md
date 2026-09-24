@@ -29,12 +29,22 @@ gravity.reset()              // back to normal
 ## Restoring the Original Game
 
 ```bash
-node tools/hw.js restore       # restores app.asar AND the exe (re-enables fuse)
+node tools/hw.js restore       # restores app.asar AND the boot binary (re-enables fuse)
 ```
 
 Or the nuclear option: Steam → Right-click game → Properties → Installed Files → Verify integrity.
 
-**Save data lives in `%APPDATA%/HappyWheels`** — patching/restoring never touches it.
+**Save data** lives outside the game folder (`%APPDATA%/HappyWheels` on Windows,
+`~/.config/HappyWheels` on Linux) — patching/restoring never touches it.
+
+## Platforms
+
+Both Steam builds are supported and patched the same way:
+
+- **Windows** — boot binary `Happy Wheels.exe`; auto-detected under `C:/SteamLibrary/...` or `C:/Program Files (x86)/Steam/...`.
+- **Linux (native, not Proton)** — boot binary `happy-wheels-bin`; auto-detected under `~/.local/share/Steam/...` (plus `~/.steam/steam` and Flatpak roots). The game is launched via `steam -applaunch 4705510` — exec'ing the binary directly bounces back to Steam. Override detection with `HW_GAME_PATH`.
+
+Install path is auto-detected per platform (see `tools/platform.js`).
 
 ## Safety
 
@@ -45,7 +55,7 @@ Or the nuclear option: Steam → Right-click game → Properties → Installed F
 | Undo the patch? | `hw restore` (backups are never overwritten) |
 | Multiplayer/bans? | Game is effectively single-player; mod at your own risk |
 
-Backups created on first patch: `resources/app.asar.original`, `Happy Wheels.exe.original`.
+Backups created on first patch: `resources/app.asar.original` and the boot binary as `.original` next to it (`Happy Wheels.exe.original` / `happy-wheels-bin.original`).
 
 ## Documentation
 

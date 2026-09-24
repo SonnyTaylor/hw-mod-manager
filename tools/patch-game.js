@@ -13,18 +13,11 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { EXE_NAME, detectGamePath } = require('./platform');
 
-const EXE_NAME = 'Happy Wheels.exe';
-
-// Default Steam path (HW_GAME_PATH env overrides; auto-detect falls back
-// through common Steam install locations)
-const AUTO_DETECT_PATHS = [
-    'C:/SteamLibrary/steamapps/common/Happy Wheels',
-    'C:/Program Files (x86)/Steam/steamapps/common/Happy Wheels',
-];
-const DEFAULT_GAME_PATH = process.env.HW_GAME_PATH
-    || AUTO_DETECT_PATHS.find(p => fs.existsSync(path.join(p, EXE_NAME)))
-    || AUTO_DETECT_PATHS[0];
+// Default install location (HW_GAME_PATH env overrides; auto-detect walks the
+// common Windows and Linux Steam locations — see tools/platform.js)
+const DEFAULT_GAME_PATH = detectGamePath();
 
 class GamePatcher {
     constructor(gamePath) {
@@ -304,7 +297,7 @@ try {
             console.log('   ✓ Asar integrity fuse disabled');
         } catch (e) {
             console.error('   ❌ Failed to flip fuse — game will crash on launch!');
-            console.error('      Run manually: npx @electron/fuses write --app "Happy Wheels.exe" EnableEmbeddedAsarIntegrityValidation=off');
+            console.error('      Run manually: npx @electron/fuses write --app "' + EXE_NAME + '" EnableEmbeddedAsarIntegrityValidation=off');
             process.exit(1);
         }
     }
@@ -344,7 +337,7 @@ try {
         const exeBackup = path.join(this.gamePath, EXE_NAME + '.original');
         if (fs.existsSync(exeBackup)) {
             fs.copyFileSync(exeBackup, exePath);
-            console.log('   ✓ Happy Wheels.exe restored (fuse re-enabled)');
+            console.log(`   ✓ ${EXE_NAME} restored (fuse re-enabled)`);
             restored = true;
         }
 

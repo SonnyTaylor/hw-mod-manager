@@ -17,13 +17,11 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
+const { IS_WINDOWS, IS_LINUX, EXE_NAME, STEAM_APPID, detectGamePath } = require('./platform');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const GAME_PATH = process.env.HW_GAME_PATH
-    || ['C:/SteamLibrary/steamapps/common/Happy Wheels', 'C:/Program Files (x86)/Steam/steamapps/common/Happy Wheels']
-        .find(p => fs.existsSync(path.join(p, 'Happy Wheels.exe')))
-    || 'C:/SteamLibrary/steamapps/common/Happy Wheels';
-const GAME_EXE = path.join(GAME_PATH, 'Happy Wheels.exe');
+const GAME_PATH = detectGamePath();
+const GAME_EXE = path.join(GAME_PATH, EXE_NAME);
 const MODS_LOG = path.join(GAME_PATH, 'mods', 'hw-mod-host.log');
 const PROJECT_MODS = path.join(PROJECT_ROOT, 'mods');
 const GAME_MODS = path.join(GAME_PATH, 'mods');
@@ -35,9 +33,14 @@ function die(msg) {
 
 function killGame() {
     try {
-        execSync('taskkill /IM "Happy Wheels.exe" /F', { stdio: 'pipe' });
+        if (IS_WINDOWS) {
+            execSync('taskkill /IM "Happy Wheels.exe" /F', { stdio: 'pipe' });
+        } else {
+            // The [h] bracket stops the pattern from matching this pkill's own argv.
+            execSync("pkill -f '[h]appy-wheels-bin'", { stdio: 'pipe' });
+        }
         console.log('🛑 Killed running instance');
-        // Give Windows a beat to release file locks
+        // Give the OS a beat to release file locks before re-patching
         execSync('sleep 2', { shell: 'bash', stdio: 'ignore' });
     } catch (e) {
         // No instance running — fine
@@ -46,7 +49,17 @@ function killGame() {
 
 function launchGame() {
     if (!fs.existsSync(GAME_EXE)) die(`Game not found at ${GAME_EXE}`);
-    spawn(GAME_EXE, [], { detached: true, stdio: 'ignore' }).unref();
+    if (IS_WINDOWS) {
+        spawn(GAME_EXE, [], { detached: true, stdio: 'ignore' }).unref();
+    } else if (IS_LINUX) {
+        // Native Linux build: launch through Steam. The game calls steamworks
+        // restartAppIfNecessary(4705510), so a direct exec bounces back to Steam
+        // anyway; going via Steam also runs the happy-wheels wrapper
+        // (--ozone-platform=x11) and wires up the Steam API.
+        spawn('steam', ['-applaunch', STEAM_APPID], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+        die(`Unsupported platform: ${process.platform}`);
+    }
     console.log('🚀 Launched Happy Wheels');
 }
 
@@ -81,13 +94,17 @@ const commands = {
         // auto-sync shared libs so the loop always runs fresh lib code
         try { commands['install-libs'](); } catch (e) {}
         launchGame();
-        console.log('⏳ Waiting 20s for game load...');
+        // Linux needs longer: `steam -applaunch` may have to warm up the Steam
+        // client first (~60s cold), and Steam runs the game through
+        // pressure-vessel before the Electron process even starts.
+        const waitSec = IS_WINDOWS ? 20 : 60;
+        console.log(`⏳ Waiting ${waitSec}s for game load...`);
         setTimeout(() => {
             console.log('\n──── mod host log ────');
             if (fs.existsSync(MODS_LOG)) console.log(fs.readFileSync(MODS_LOG, 'utf8'));
             else console.log('(no log written — game may not have loaded)');
             process.exit(0);
-        }, 20000);
+        }, waitSec * 1000);
     },
 
     new(args) {
