@@ -49,6 +49,7 @@
             const GOD = 1e9;
             const grav = window.gravity;
             const ed = window.charEd;
+            const ts = window.timeScale;
 
             const panel = HWLibs.ui.panel({ title: 'Cheats', storageKey: 'cheats', width: 240 });
 

@@ -40,7 +40,9 @@ Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it v
   (16:9 / 21:9 / 1:1 / 9:16 portrait / fill-window, persisted, re-applies 'fill' on window
   resize). Drives the game's OWN layout path (`app.safeSize`+`app.maxSize` →
   `app.resize()` + `updatePixiResolution()`) — see docs/game-internals.md. Verified
-  working by user (2026-09-25).
+  working by user (2026-09-25). Menus are authored for 900x500 and look broken at
+  extreme aspects, so the engine auto-reverts to 16:9 in menus (silent, not persisted)
+  and re-applies the chosen preset when a level session starts (per-tick check).
 - `time-mod` — physics time factor via `window.timeScale` (set/get/normal; 0.05–∞,
   presets in cheat menu). Scales `session.m_timeStep` against a per-session baseline,
   re-applied per tick. In-level verification pending.

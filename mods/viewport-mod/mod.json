@@ -1,8 +1,8 @@
 {
     "name": "viewport-mod",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Logical resolution/aspect control: 16:9, 21:9, 1:1, 9:16 portrait, fill-window",
     "author": "",
     "tags": ["display", "viewport"],
-    "requires": ["settings"]
+    "requires": ["game", "settings"]
 }

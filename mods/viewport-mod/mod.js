@@ -20,6 +20,9 @@
  *  - UI elements are laid out for 900x500 by the game's own screen resize handlers,
  *    so menus/HUD reflow with the new logical size — visual quirks are possible at
  *    extreme aspects; report them rather than widening the presets blindly.
+ *  - MENUS: the game's menu screens look broken at extreme aspects (UI is authored
+ *    for 900x500), so the engine AUTO-REVERTS to 16:9 while no level session is
+ *    active and re-applies the chosen preset when a level loads (per-tick check).
  */
 (function () {
     'use strict';
@@ -55,7 +58,7 @@
         let current = settings.get('viewport', 'preset', '16:9');
         if (!PRESETS[current]) current = '16:9';
 
-        function apply(name) {
+        function apply(name, silent) {
             const p = PRESETS[name];
             if (!p) return false;
             const w = p()[0], h = p()[1];
@@ -65,8 +68,8 @@
                 app.resize();
                 app.updatePixiResolution();
                 current = name;
-                settings.set('viewport', 'preset', name);
-                HW.log('Viewport', name + ' → ' + w + 'x' + h + ' (logical)');
+                if (!silent) settings.set('viewport', 'preset', name);
+                if (!silent) HW.log('Viewport', name + ' → ' + w + 'x' + h + ' (logical)');
                 return true;
             } catch (e) {
                 HW.log('Viewport', 'apply failed:', e.message);
@@ -90,6 +93,21 @@
 
         // re-apply the persisted choice (default 16:9 needs no action)
         if (current !== '16:9') apply(current);
+
+        // Menus are authored for 900x500 — revert there, restore in-level.
+        let menuSaved = null;
+        HW.onTick(function () {
+            try {
+                const inLevel = HWLibs.game.inLevel();
+                if (!inLevel && current !== '16:9') {
+                    menuSaved = current;
+                    apply('16:9', true);
+                } else if (inLevel && menuSaved) {
+                    const want = menuSaved; menuSaved = null;
+                    if (PRESETS[want]) apply(want, true);
+                }
+            } catch (e) {}
+        });
 
         HW.log('Viewport', 'engine ready — window.viewport, presets: ' + window.viewport.presets.join(', '));
     });
