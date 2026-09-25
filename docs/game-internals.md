@@ -185,6 +185,20 @@ triggers (landing detection, collision sounds, achievements).
   `happyWheels.loadLevelByID`/`enterSession` this is the lever for a custom level launcher.
 - `cursorPos()` — native cursor pos; `exit()`, `loaded()`
 
+### Character select (snooped on the character-select screen 2026-09-25)
+
+- Lives at `happyWheels.sessionController.characterMenu` (an overlay INSIDE the game
+  screen — `screenManager.currentScreen.id` stays `TempGameScene` even on menus).
+- Fields: `icons: Array` (**25 characters**, display objects), `selectedIcon` (has
+  `.index`), `altar/spotlights/smokeSprites` (the shrine visuals), `charIndex` on
+  happyWheels mirrors the selection.
+- `loadCharacter()` (decoded): sets a global charIndex from `selectedIcon.index`, calls
+  `killSessionIfExists()`, reloads → **character-swap mod = set `selectedIcon.index = N`
+  then call `loadCharacter()`** (session restarts with the new character). Not yet
+  verified — reverse it more before calling.
+- `charIndex` is set at session creation; changing it mid-session requires the
+  loadCharacter path.
+
 ### happyWheels screen (o4) — screen-level machinery
 
 `enterSession`, `loadLevelByID`, `loadReplayByID`, `openEditor`/`closeEditor`,
