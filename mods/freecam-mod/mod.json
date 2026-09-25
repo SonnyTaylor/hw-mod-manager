@@ -1,0 +1,8 @@
+{
+    "name": "freecam-mod",
+    "version": "0.1.0",
+    "description": "Free camera: detach camera in-level, arrow-key pan, mouse-wheel zoom. Hotkey F.",
+    "author": "",
+    "tags": ["camera", "ui"],
+    "requires": ["game", "settings"]
+}

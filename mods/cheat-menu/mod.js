@@ -12,10 +12,12 @@
  *   Viewport — logical resolution presets (16:9 / 21:9 / 1:1 / 9:16 / Fill window)
  *               via window.viewport.
  *   Time     — physics speed slider (0.05 slow-mo … 2 fast) + presets via window.timeScale.
+ *   Camera   — free-camera toggle (window.freecam; also hotkey F).
+ *   HUD      — overlay readout toggle (window.hud).
  *
- * Consumes the engine mods (gravity-mod, character-editor, viewport-mod, time-mod).
- * Injection order is fs order, so engines may not exist yet when this mod's onReady
- * fires — we poll for all engine globals for up to 15s.
+ * Consumes the engine mods (gravity-mod, character-editor, viewport-mod, time-mod,
+ * freecam-mod, hud-mod). Injection order is fs order, so engines may not exist yet when
+ * this mod's onReady fires — we poll for all engine globals for up to 15s.
  *
  * Adding a section: engine mod exposes a console API on window, then add a
  * panel.addSection + controls here. Keep engines UI-free.
@@ -34,12 +36,12 @@
         // engines may inject after us — poll briefly
         let tries = 0;
         (function wait() {
-            if (window.gravity && window.charEd && window.viewport && window.timeScale) {
+            if (window.gravity && window.charEd && window.viewport && window.timeScale && window.freecam && window.hud) {
                 try { build(); } catch (e) { HW.log('Cheat Menu', 'build failed:', e.message); }
                 return;
             }
             if (++tries > 60) {
-                HW.log('Cheat Menu', 'engines not found — install gravity-mod + character-editor + viewport-mod + time-mod');
+                HW.log('Cheat Menu', 'engines not found — install gravity-mod, character-editor, viewport-mod, time-mod, freecam-mod, hud-mod');
                 return;
             }
             setTimeout(wait, 250);
@@ -50,6 +52,8 @@
             const grav = window.gravity;
             const ed = window.charEd;
             const ts = window.timeScale;
+            const fc = window.freecam;
+            const hud = window.hud;
 
             const panel = HWLibs.ui.panel({ title: 'Cheats', storageKey: 'cheats', width: 240 });
 
@@ -110,6 +114,18 @@
                 { label: '2x', value: 2 }
             ], (v) => { ts.set(v); sync(); });
 
+            // ---- Camera / HUD ----------------------------------------------
+            const camSec = panel.addSection('Camera');
+            const camToggle = camSec.addToggle({
+                label: 'Free camera (F)', value: fc.enabled,
+                onChange: (b) => { b ? fc.on() : fc.off(); sync(); }
+            });
+            const hudSec = panel.addSection('HUD');
+            const hudToggle = hudSec.addToggle({
+                label: 'Show HUD readout', value: hud.enabled,
+                onChange: (b) => { hud.set(b); sync(); }
+            });
+
             function clampFactor(f) {
                 return Math.max(0.1, Math.min(50, f >= GOD ? 50 : f));
             }
@@ -122,6 +138,8 @@
                 cSlider.set(clampFactor(f));
                 const tf = ts.get();
                 tSlider.set(Math.max(0.05, Math.min(2, tf)));
+                camToggle.set(fc.enabled);
+                hudToggle.set(hud.enabled);
                 panel.setValue('G ' + (gm != null ? gm.toFixed(2) + '×' : '?') +
                     ' · C ' + (f >= GOD ? 'GOD' : parseFloat(f.toFixed(2)) + '×') +
                     ' · T ' + parseFloat(tf.toFixed(2)) + '×');

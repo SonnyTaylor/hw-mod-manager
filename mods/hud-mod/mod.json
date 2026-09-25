@@ -1,0 +1,8 @@
+{
+    "name": "hud-mod",
+    "version": "0.1.0",
+    "description": "Corner HUD: fps, body count, time/gravity factors, god/freecam state",
+    "author": "",
+    "tags": ["debug", "ui"],
+    "requires": ["game", "settings"]
+}
