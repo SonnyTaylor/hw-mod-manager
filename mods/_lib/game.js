@@ -49,6 +49,10 @@
         level() { const s = needSession('level'); return (s && s._level) || null; },
         /** Player character (class ij) or null. */
         character() { const s = needSession('character'); return (s && s._character) || null; },
+        /** Session controller (class fu) — has restartLevel()/replayLevel()/levelDataObject. */
+        sessionController() {
+            try { return getScreen().happyWheels.sessionController || null; } catch (e) { return null; }
+        },
         /** Camera controller (class J) or null. */
         camera() { const s = needSession('camera'); return (s && s._camera) || null; },
         /** true when a level session is active (not menu). */

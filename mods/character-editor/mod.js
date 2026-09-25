@@ -83,10 +83,30 @@
             if (!c) return false;
             try {
                 if (typeof c.bleedCounter === 'number') c.bleedCounter = 0;
-                HW.log('Character Editor', 'bleed reset');
+                if (c.lostLimbs) c.lostLimbs.clear();
+                HW.log('Character Editor', 'bleed stopped');
                 return true;
             } catch (e) {
                 HW.log('Character Editor', 'heal failed:', e.message);
+                return false;
+            }
+        }
+
+        /** Full heal: game-native level restart — regrows limbs, clears lostLimbs,
+         *  bleeding and any world bloat. The tick engine re-applies the factor to the
+         *  fresh character automatically (new instance → new baseline).
+         *  NOTE: character.reset()/create() called directly LEAK 27 bodies per call
+         *  (the game tears down at session level, not character level) — never call
+         *  them as a heal. restartLevel() is the clean path. */
+        function respawn() {
+            try {
+                const sc = game.sessionController();
+                if (!sc || typeof sc.restartLevel !== 'function') throw new Error('no sessionController.restartLevel');
+                sc.restartLevel();
+                HW.log('Character Editor', 'level restarted (full heal)');
+                return true;
+            } catch (e) {
+                HW.log('Character Editor', 'respawn failed:', e.message);
                 return false;
             }
         }
@@ -102,7 +122,7 @@
                 .concat([{ factor: state.factor, bleedCounter: c.bleedCounter }]);
         }
 
-        window.charEd = { setFactor, getFactor: () => state.factor, heal, info };
+        window.charEd = { setFactor, getFactor: () => state.factor, heal, respawn, info };
 
         // --- tick: keep limits applied -----------------------------------
 

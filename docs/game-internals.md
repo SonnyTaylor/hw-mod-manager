@@ -50,6 +50,9 @@ Display-object base (children, transform, listeners) **plus**:
 
 - Physics: `m_world`, `m_iterations`, `m_timeStep` (1/30), `m_physScale` (62.5 px/m), `steps`, `_accumulatedStep`
 - Parts: `_level` (i2), `_character` (ij), `_camera` (J), `_particleController`, `_contactListener` (J), `_buttonContainer`
+- Controller: `sessionController` (class `fu`) — owns `restartLevel()`, `replayLevel()`,
+  `beginSession()`, `loadSession()`, `killSession()`, `requestPause()`, `die()`,
+  `levelDataObject` (the level's source data — restart path), `restartCount`
 - State: `frames`, `paused`, `inputAllowed`, `isEditorTest`, `isMenu`, `charIndex`, `_version`, `_levelVersion`
 - Movement: `_travel` (Mq), `_flips`, `_magnet`, `cameraModeInvocations`, `enableCameraMode`, `useDebugger`
 
@@ -91,6 +94,25 @@ Break/dismember limits — FULL list (20 keys, enumerated live 2026-09-25; disco
 
 Plus `lostLimbs` (Set), `bleedCounter`, handlers (`keyDownHandler`, `contactAddHandler`…),
 `_startX/_startY`, `character_scale`, `_session`, `m_physScale`.
+
+#### Character methods (prototype chain, enumerated live 2026-09-25)
+
+- Class `fK` → `fK` → base `k`. Base `k` has the full dismemberment machinery:
+  `torsoBreak`, `neckBreak`, `shoulderBreak1/2`, `elbowBreak1/2`, `hipBreak1/2`,
+  `kneeBreak1/2`, `headSmash1`, `chestSmash`, `pelvisSmash`, `footSmash1/2`,
+  `helmetSmash`, `explodeShape`, plus `create`, `createBodies`, `createJoints`,
+  `setLimits`, `resetJointLimits`, `reset`, `die`, `checkJoints`, `removeBody`,
+  `isOwnBody`, `trackLimbLost`, `trackDecapitation`, `eject`, pose functions.
+- **Calling `character.reset()` or `.create()` directly LEAKS 27 bodies per call**
+  (11 `isOwnBody`-tracked + 16 untracked rig parts; the game tears down at session
+  level, not character level). Never use them as a heal.
+- **Clean full heal = `sessionController.restartLevel()`** (class `fu`, on
+  `happyWheels.sessionController`) — the game's own restart (pause/death screen path).
+  Reuses `sessionController.levelDataObject`, so it works even when
+  `happyWheels._levelID` is -1 (injected-session levels). Regrows limbs, clears
+  bleeding/lostLimbs, resets world body count to pristine.
+- `character.neckBreak()` etc. need contact args — calling with none silently no-ops.
+- `character.isOwnBody(body)` identifies the 11 tracked character bodies (not all rig parts).
 
 ### Camera (class J)
 
