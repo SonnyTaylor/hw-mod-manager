@@ -14,10 +14,11 @@
  *   Time     — physics speed slider (0.05 slow-mo … 2 fast) + presets via window.timeScale.
  *   Camera   — free-camera toggle (window.freecam; also hotkey F).
  *   HUD      — overlay readout toggle (window.hud).
+ *   Sandbox  — physics gun toggle (window.physgun; also hotkey G).
  *
  * Consumes the engine mods (gravity-mod, character-editor, viewport-mod, time-mod,
- * freecam-mod, hud-mod). Injection order is fs order, so engines may not exist yet when
- * this mod's onReady fires — we poll for all engine globals for up to 15s.
+ * freecam-mod, hud-mod, physgun-mod). Injection order is fs order, so engines may not
+ * exist yet when this mod's onReady fires — we poll for all engine globals for up to 15s.
  *
  * Adding a section: engine mod exposes a console API on window, then add a
  * panel.addSection + controls here. Keep engines UI-free.
@@ -36,12 +37,12 @@
         // engines may inject after us — poll briefly
         let tries = 0;
         (function wait() {
-            if (window.gravity && window.charEd && window.viewport && window.timeScale && window.freecam && window.hud) {
+            if (window.gravity && window.charEd && window.viewport && window.timeScale && window.freecam && window.hud && window.physgun) {
                 try { build(); } catch (e) { HW.log('Cheat Menu', 'build failed:', e.message); }
                 return;
             }
             if (++tries > 60) {
-                HW.log('Cheat Menu', 'engines not found — install gravity-mod, character-editor, viewport-mod, time-mod, freecam-mod, hud-mod');
+                HW.log('Cheat Menu', 'engines not found — install all engine mods (gravity, character, viewport, time, freecam, hud, physgun)');
                 return;
             }
             setTimeout(wait, 250);
@@ -54,6 +55,7 @@
             const ts = window.timeScale;
             const fc = window.freecam;
             const hud = window.hud;
+            const pg = window.physgun;
 
             const panel = HWLibs.ui.panel({ title: 'Cheats', storageKey: 'cheats', width: 240 });
 
@@ -125,6 +127,11 @@
                 label: 'Show HUD readout', value: hud.enabled,
                 onChange: (b) => { hud.set(b); sync(); }
             });
+            const gunSec = panel.addSection('Sandbox');
+            const gunToggle = gunSec.addToggle({
+                label: 'Physics gun (G)', value: pg.armed,
+                onChange: (b) => { b ? pg.on() : pg.off(); sync(); }
+            });
 
             function clampFactor(f) {
                 return Math.max(0.1, Math.min(50, f >= GOD ? 50 : f));
@@ -140,6 +147,7 @@
                 tSlider.set(Math.max(0.05, Math.min(2, tf)));
                 camToggle.set(fc.enabled);
                 hudToggle.set(hud.enabled);
+                gunToggle.set(pg.armed);
                 panel.setValue('G ' + (gm != null ? gm.toFixed(2) + '×' : '?') +
                     ' · C ' + (f >= GOD ? 'GOD' : parseFloat(f.toFixed(2)) + '×') +
                     ' · T ' + parseFloat(tf.toFixed(2)) + '×');
