@@ -199,6 +199,23 @@ triggers (landing detection, collision sounds, achievements).
 - `charIndex` is set at session creation; changing it mid-session requires the
   loadCharacter path.
 
+### Level browser (snooped on the browse-levels page 2026-09-25)
+
+- Opened via `happyWheels.mainMenu.openLevelBrowser()`; related: `openLoadLevelMenu()`,
+  `openFeaturedMenu()`, `openBasicMenu()` (all on mainMenu o4).
+- The browser object (class o9, reached at `mainMenu.children[14]` — POSITIONAL, don't
+  hard-code; find it by class/fields instead) has: `loadDownloads()`, `enterDownloadsMode()`,
+  `buildList()/killList()`, `loadDataOffset` (paging), `createSearchTermButton`,
+  `updateAuthors`, `getLevelsFromAuthor(of)`.
+- Each visible row (class o9/fu) carries **`_levelDataObject: R`** — metadata record:
+  `_id` (server level ID!), `_name`, `_author_name`, `_author_id`, `_weighted_rating`,
+  `_votes`, `_average_rating`, `_plays`, `_comments`, `_character` (0 = default),
+  `_forceChar` (levels can force a character!), `_importable`, `_featured`, `_isPublic`,
+  `_created: Date`. Has `clone()`.
+- Level launcher mod: collect row `_id`s (or via the browser's list methods) →
+  `happyWheels.loadLevelByID(id)`. Server levels only — local ones go through
+  `hwNative.downloads`.
+
 ### happyWheels screen (o4) — screen-level machinery
 
 `enterSession`, `loadLevelByID`, `loadReplayByID`, `openEditor`/`closeEditor`,
