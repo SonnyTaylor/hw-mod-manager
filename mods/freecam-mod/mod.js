@@ -2,17 +2,13 @@
  * Free Camera (engine) — detach the in-level camera; pan with arrow keys, zoom with
  * the mouse wheel. Toggle: hotkey F or window.freecam.toggle().
  *
- * Mechanism: the camera (class J — see docs/game-internals.md: zoom, midX/midY,
- * _focus/_steppedFocus, _containerObj) computes its position from a focus object
- * during the game's update. Our HW.onTick callbacks run EARLIER in the frame than
- * the game's ticker (registered first), so we write the SOURCE values each tick
- * (_focus.x/y and zoom) and the camera's own update then uses them — no fighting
- * the renderer.
- *
- * _focus shape is detected at enable (this build obfuscates class names; shapes
- * only): numeric x/y → focus-override mode. Otherwise falls back to writing
- * cam.midX/midY directly (may be overwritten by the camera each step — a dump is
- * logged to the console on enable for iteration).
+ * Mechanism (verified against the obfuscated cam.step()/center() source): step() calls
+ * `this._focus.GetInterpolatedPosition()` every step and feeds it to center(point)
+ * (world meters × m_physScale → container position, clamped by borders). So we REPLACE
+ * cam._focus with a fake object whose GetInterpolatedPosition() returns our pan
+ * position (a self-mimicking Proxy so any chained call still yields x/y). Focus is a
+ * b2Body, NOT a plain {x,y} object — midX/midY writes get recomputed and don't stick.
+ * removeSecondFocus() is called on enable so the single-focus path runs.
  *
  * Controls while enabled:
  *   Arrow keys      pan (Shift = 3x speed)
@@ -33,57 +29,75 @@
 
         const state = {
             enabled: false,
-            mode: null,     // 'focus' | 'mid'
             zoom: 1,
             zoom0: 1,
-            pos: { x: 0, y: 0 },
+            pos: { x: 0, y: 0 },   // world meters
             keys: new Set(),
+            lastT: 0,
+            origFocus: null,
+            origSecond: null,
+            fake: null,
             errored: false
         };
 
         function cam() { return game.camera(); }
 
-        function dump(label) {
-            const c = cam();
-            if (!c) return;
-            const focusKeys = c._focus ? Object.getOwnPropertyNames(c._focus).slice(0, 12).join(',') : String(c._focus);
-            const stepKeys = c._steppedFocus ? Object.getOwnPropertyNames(c._steppedFocus).slice(0, 12).join(',') : String(c._steppedFocus);
-            const protoFns = [];
-            let cur = c;
-            for (let d = 0; cur && d < 2; d++) {
-                protoFns.push(Object.getOwnPropertyNames(cur).filter(k => /focus|zoom|pan|move|update|set/i.test(k) && typeof cur[k] === 'function'));
-                cur = Object.getPrototypeOf(cur);
+        function makeFake(target) {
+            let fake = null;
+            fake = new Proxy(target, {
+                get(t, k) {
+                    if (k === 'x') return t.x;
+                    if (k === 'y') return t.y;
+                    // any method call (GetInterpolatedPosition, .clone(), …) returns
+                    // another proxy that reads/writes the same live position
+                    return () => fake;
+                }
+            });
+            return fake;
+        }
+
+        function currentFocusPos(c) {
+            try {
+                const p = c._focus.GetInterpolatedPosition();
+                return { x: p.x, y: p.y };
+            } catch (e) {
+                return { x: 0, y: 0 };
             }
-            HW.log('FreeCam', label, 'zoom=' + c.zoom, 'mid=' + c.midX + ',' + c.midY,
-                '_focus{' + focusKeys + '}', '_stepped{' + stepKeys + '}',
-                'proto:' + protoFns.map((f, i) => i + '[' + f.join('|') + ']').join(' '),
-                'physScale=' + c.m_physScale);
         }
 
         function enable() {
             const c = cam();
             if (!c) { HW.log('FreeCam', 'no camera — enter a level first'); return false; }
+            if (!c._focus || typeof c._focus.GetInterpolatedPosition !== 'function') {
+                HW.log('FreeCam', 'unexpected camera shape — see console dump');
+                dump('enable-unexpected');
+                return false;
+            }
             state.zoom0 = typeof c.zoom === 'number' ? c.zoom : 1;
             state.zoom = state.zoom0;
-            state.mode = null;
-            if (c._focus && typeof c._focus.x === 'number' && typeof c._focus.y === 'number') {
-                state.mode = 'focus';
-                state.pos = { x: c._focus.x, y: c._focus.y };
-            } else if (typeof c.midX === 'number') {
-                state.mode = 'mid';
-                state.pos = { x: c.midX, y: c.midY };
-            }
-            dump('enable');
-            if (!state.mode) { HW.log('FreeCam', 'unknown camera shape — nothing overridden (dump above)'); return false; }
+            state.origFocus = c._focus;
+            state.origSecond = c._secondFocus;
+            try { c.removeSecondFocus(); } catch (e) {}
+            state.pos = currentFocusPos(c);
+            state.fake = makeFake(state.pos);
+            c._focus = state.fake;
             state.enabled = true;
-            HW.log('FreeCam', 'ON (' + state.mode + ' mode) — arrows pan, wheel zoom, F to exit');
+            HW.log('FreeCam', 'ON — arrows pan, wheel zoom, F to exit (pos ' +
+                state.pos.x.toFixed(1) + ',' + state.pos.y.toFixed(1) + ')');
             return true;
         }
 
         function disable() {
             const c = cam();
-            if (c && typeof state.zoom0 === 'number') { try { c.zoom = state.zoom0; } catch (e) {} }
+            if (c) {
+                if (state.origFocus) { try { c._focus = state.origFocus; } catch (e) {} }
+                if (state.origSecond !== undefined) { try { c._secondFocus = state.origSecond; } catch (e) {} }
+                try { c.zoom = state.zoom0; } catch (e) {}
+            }
             state.enabled = false;
+            state.fake = null;
+            state.origFocus = null;
+            state.origSecond = null;
             state.keys.clear();
             HW.log('FreeCam', 'OFF — camera back to character');
         }
@@ -114,18 +128,20 @@
             state.zoom = Math.max(0.25, Math.min(4, state.zoom));
         }, { passive: false });
 
-        // --- per-tick application -------------------------------------------
+        // --- per-tick: move the fake focus -----------------------------------
 
         const HW_BASE = window.innerWidth || 900;
-        HW.onTick(function () {
+        HW.onTick(function (t) {
             try {
-                if (!state.enabled) return;
+                if (!state.enabled) { state.lastT = 0; return; }
                 const c = cam();
-                if (!c) { disable(); return; }
-                // pan speed: ~2.5% of the visible width per frame (world units)
+                if (!c || c._focus !== state.fake) { disable(); return; }
+                // pan: time-based, 20% of visible width per second (frame-rate independent)
+                const dt = state.lastT ? Math.min(0.1, (t - state.lastT) / 1000) : 0;
+                state.lastT = t;
                 const physScale = c.m_physScale || 62.5;
                 const visibleWorld = HW_BASE / state.zoom / physScale;
-                const step = visibleWorld * 0.025;
+                const step = visibleWorld * 0.2 * dt;
                 if (state.keys.size) {
                     let dx = 0, dy = 0;
                     if (state.keys.has('ArrowLeft')) dx -= 1;
@@ -135,12 +151,6 @@
                     if (state.keys.has('Shift')) { dx *= 3; dy *= 3; }
                     state.pos.x += dx * step;
                     state.pos.y += dy * step;
-                }
-                if (state.mode === 'focus') {
-                    if (c._focus && typeof c._focus.x === 'number') { c._focus.x = state.pos.x; c._focus.y = state.pos.y; }
-                    if (c._steppedFocus && typeof c._steppedFocus.x === 'number') { c._steppedFocus.x = state.pos.x; c._steppedFocus.y = state.pos.y; }
-                } else if (state.mode === 'mid') {
-                    c.midX = state.pos.x; c.midY = state.pos.y;
                 }
                 c.zoom = state.zoom;
             } catch (e) {

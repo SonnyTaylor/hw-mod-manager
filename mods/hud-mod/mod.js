@@ -5,6 +5,12 @@
  * Hides automatically in menus (no session). Toggle with window.hud.toggle()
  * or the cheat-menu HUD switch. State persisted (hw.hud settings namespace).
  *
+ * While OUR HUD is enabled, the game's own FPS counter (a PIXI text object with
+ * _text like "59 fps" under the stage) is suppressed via renderable=false+visible
+ *=false — re-asserted every few ticks because the game re-sets visible per frame
+ * and recreates the counter per screen. When our HUD is disabled, both flags are
+ * restored so the built-in counter comes back.
+ *
  * Pointer-events: none — never blocks the game.
  */
 (function () {
@@ -30,13 +36,13 @@
         let enabled = settings.get('hud', 'enabled', true);
         let frames = 0, lastFpsT = performance.now(), fps = 0, acc = 0;
         let bodyCount = 0, lastBodyCountT = 0;
+        const suppressed = new Set();
 
         function fmt(v, suffix) { return v == null ? '?' : parseFloat(v.toFixed(2)) + (suffix || ''); }
 
         function render() {
             const ses = game.session();
-            if (!ses) { el.style.display = 'none'; return; }
-            if (!enabled) { el.style.display = 'none'; return; }
+            if (!ses || !enabled) { el.style.display = 'none'; return; }
             el.style.display = 'block';
             const lines = [];
             lines.push(fps + ' fps · ' + bodyCount + ' bodies');
@@ -47,6 +53,43 @@
             if (window.freecam && window.freecam.enabled) lines.push('freecam');
             if (ses.paused) lines.push('paused');
             el.textContent = lines.join('\n');
+        }
+
+        function findFpsCounters() {
+            const found = [];
+            try {
+                const stage = HW.getStage();
+                if (!stage) return found;
+                const walk = (o, depth) => {
+                    if (!o || depth > 10 || found.length > 5) return;
+                    try {
+                        if (typeof o._text === 'string' && /fps/i.test(o._text)) found.push(o);
+                    } catch (e) {}
+                    if (Array.isArray(o.children)) for (const k of o.children) walk(k, depth + 1);
+                };
+                walk(stage, 0);
+            } catch (e) {}
+            return found;
+        }
+
+        function applySuppression() {
+            try {
+                const counters = findFpsCounters();
+                if (enabled) {
+                    counters.forEach(o => {
+                        try {
+                            o.visible = false;
+                            o.renderable = false; // survives the game re-setting visible=true
+                            suppressed.add(o);
+                        } catch (e) {}
+                    });
+                } else if (suppressed.size) {
+                    suppressed.forEach(o => {
+                        try { o.visible = true; o.renderable = true; } catch (e) {}
+                    });
+                    suppressed.clear();
+                }
+            } catch (e) {}
         }
 
         HW.onTick(function (t) {
@@ -65,17 +108,19 @@
                     bodyCount = w ? w.GetBodyCount() : 0;
                 }
                 acc += 1;
-                if (acc % 8 === 0) render(); // ~8Hz repaint
+                if (acc % 8 === 0) render();        // ~8Hz repaint
+                if (acc % 6 === 0) applySuppression(); // re-assert / restore
             } catch (e) {}
         });
 
         window.hud = {
-            toggle() { enabled = !enabled; settings.set('hud', 'enabled', enabled); render(); return enabled; },
+            toggle() { enabled = !enabled; settings.set('hud', 'enabled', enabled); render(); applySuppression(); return enabled; },
             get enabled() { return enabled; },
-            set(v) { enabled = !!v; settings.set('hud', 'enabled', enabled); render(); }
+            set(v) { enabled = !!v; settings.set('hud', 'enabled', enabled); render(); applySuppression(); }
         };
 
         render();
+        applySuppression();
         HW.log('HUD', 'engine ready — window.hud (toggle in cheat menu)');
     });
 })();
