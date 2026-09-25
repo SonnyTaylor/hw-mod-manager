@@ -11,7 +11,7 @@
  * removeSecondFocus() is called on enable so the single-focus path runs.
  *
  * Controls while enabled:
- *   Arrow keys      pan (Shift = 3x speed)
+ *   Arrow keys      pan (50%/s of visible width; Shift = 4x)
  *   Mouse wheel     zoom (clamped 0.25–4)
  *   F               toggle off (camera snaps back to the character)
  */
@@ -136,19 +136,19 @@
                 if (!state.enabled) { state.lastT = 0; return; }
                 const c = cam();
                 if (!c || c._focus !== state.fake) { disable(); return; }
-                // pan: time-based, 20% of visible width per second (frame-rate independent)
+                // pan: time-based, 50% of visible width per second (frame-rate independent)
                 const dt = state.lastT ? Math.min(0.1, (t - state.lastT) / 1000) : 0;
                 state.lastT = t;
                 const physScale = c.m_physScale || 62.5;
                 const visibleWorld = HW_BASE / state.zoom / physScale;
-                const step = visibleWorld * 0.2 * dt;
+                const step = visibleWorld * 0.5 * dt;
                 if (state.keys.size) {
                     let dx = 0, dy = 0;
                     if (state.keys.has('ArrowLeft')) dx -= 1;
                     if (state.keys.has('ArrowRight')) dx += 1;
                     if (state.keys.has('ArrowUp')) dy -= 1;
                     if (state.keys.has('ArrowDown')) dy += 1;
-                    if (state.keys.has('Shift')) { dx *= 3; dy *= 3; }
+                    if (state.keys.has('Shift')) { dx *= 4; dy *= 4; }
                     state.pos.x += dx * step;
                     state.pos.y += dy * step;
                 }
