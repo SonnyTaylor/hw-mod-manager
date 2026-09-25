@@ -1,8 +1,16 @@
 {
-    "name": "cheat-menu",
-    "version": "0.5.1",
-    "description": "Combined cheat panel: gravity + character durability, built to grow (time control, camera, …)",
-    "author": "",
-    "tags": ["cheats", "ui"],
-    "requires": ["ui", "game", "settings"]
+    "name": "Cheat Menu",
+    "version": "0.6.0",
+    "description": "Combined cheat panel \u2014 gravity, character, viewport, time, camera, HUD, sandbox. One panel for all engines.",
+    "author": "HW Mod Manager",
+    "tags": [
+        "cheats",
+        "ui"
+    ],
+    "requires": [
+        "ui",
+        "game",
+        "settings"
+    ],
+    "hotToggle": true
 }

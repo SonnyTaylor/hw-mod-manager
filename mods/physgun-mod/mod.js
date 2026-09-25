@@ -29,6 +29,18 @@
 
     const HW = window.__HW__;
 
+    let pendingStrength = null;
+    function applySettings(v) {
+        if (!v || typeof v.strength !== 'number') return;
+        if (window.physgun) window.physgun.setStrength(v.strength);
+        else pendingStrength = v.strength;
+    }
+    HW.onSettings(applySettings);
+    HW.onDisable(function () {
+        try { if (window.physgun) window.physgun.off(); } catch (e) {}
+        HW.log('PhysGun', 'disabled — gun disarmed');
+    });
+
     HW.onReady(function () {
         if (!(window.HWLibs && HWLibs.game && HWLibs.settings)) {
             HW.log('PhysGun', 'HWLibs.game/settings missing — install mods/_lib/');
@@ -192,5 +204,6 @@
         };
 
         HW.log('PhysGun', 'engine ready — G to arm, window.physgun');
+        if (pendingStrength != null) { const s = pendingStrength; pendingStrength = null; physgun.setStrength(s); }
     });
 })();

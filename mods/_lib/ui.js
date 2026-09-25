@@ -263,6 +263,8 @@
                 },
                 /** Fired when the user closes the panel (e.g. stop pollers). */
                 onClosed(fn) { closeHandlers.push(fn); },
+                /** Remove the panel from the DOM (hot-disable teardown). */
+                destroy() { el.remove(); },
                 show() { el.classList.remove('closed'); }
             }, rootControls);
             return api;

@@ -14,6 +14,12 @@
  * Box2D 2.1a Flash-port API: world.SetGravity(vec), gravity in world.m_gravity
  * as {x:0, y:10} — y-DOWN positive, physScale 62.5 px/m. b2Vec2 has .Set(x,y).
  * Only exists while a level is loaded (menu has no session).
+ *
+ * Hot-toggle + settings (see mods/AGENTS.md contract):
+ *   onDisable  → resets gravity to 1x (the game keeps running normally).
+ *   onSettings → applies the manager's saved values (preset / factor);
+ *                deferred until window.gravity exists (onReady may lag the
+ *                injection that pushed the values).
  */
 (function () {
     'use strict';
@@ -28,6 +34,27 @@
             return null;
         }
     }
+
+    let pendingSettings = null;
+
+    function applySettings(v) {
+        v = v || {};
+        const g = window.gravity;
+        if (!g) { pendingSettings = v; return; }
+        if (v.preset === 'custom') {
+            if (typeof v.factor === 'number') g.set(v.factor);
+        } else if (v.preset && v.preset !== 'normal' && typeof g[v.preset] === 'function') {
+            g[v.preset]();
+        } else {
+            g.reset();
+        }
+    }
+
+    HW.onSettings(applySettings);
+    HW.onDisable(function () {
+        try { if (window.gravity) window.gravity.reset(); } catch (e) {}
+        HW.log('Gravity Modifier', 'disabled — gravity restored');
+    });
 
     HW.onReady(function () {
         HW.log('Gravity Modifier', 'ready — path-based world finder (enter a level to use)');
@@ -62,5 +89,7 @@
             jupiter() { return this.set(2.53); },
             zeroG() { return this.set(0); }
         };
+
+        if (pendingSettings) { applySettings(pendingSettings); pendingSettings = null; }
     });
 })();

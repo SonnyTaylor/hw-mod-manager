@@ -30,6 +30,24 @@
 
     const HW = window.__HW__;
 
+    let pendingPreset = null;
+    function applySettings(v) {
+        if (!v) return;
+        const map = { normal: 1, tough: 10, iron: 100, god: 1e9 };
+        const f = v.preset === 'custom' && typeof v.factor === 'number'
+            ? v.factor
+            : map[v.preset];
+        if (f != null) {
+            if (window.charEd) window.charEd.setFactor(f);
+            else pendingPreset = f;
+        }
+    }
+    HW.onSettings(applySettings);
+    HW.onDisable(function () {
+        try { if (window.charEd) window.charEd.setFactor(1); } catch (e) {}
+        HW.log('Character Editor', 'disabled — limits restored to normal');
+    });
+
     HW.onReady(function () {
         if (!(window.HWLibs && HWLibs.game && HWLibs.settings)) {
             HW.log('Character Editor', 'HWLibs.game/settings missing — install mods/_lib/');
@@ -123,6 +141,7 @@
         }
 
         window.charEd = { setFactor, getFactor: () => state.factor, heal, respawn, info };
+        if (pendingPreset != null) { const f = pendingPreset; pendingPreset = null; setFactor(f); }
 
         // --- tick: keep limits applied -----------------------------------
 

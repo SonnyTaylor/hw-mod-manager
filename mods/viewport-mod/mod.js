@@ -29,6 +29,18 @@
 
     const HW = window.__HW__;
 
+    let pendingPreset = null;
+    function applySettings(v) {
+        if (!v || !v.preset) return;
+        if (window.viewport) window.viewport.apply(v.preset);
+        else pendingPreset = v.preset;
+    }
+    HW.onSettings(applySettings);
+    HW.onDisable(function () {
+        try { if (window.viewport) window.viewport.restore(); } catch (e) {}
+        HW.log('Viewport', 'disabled — restored to the game\'s own resolution');
+    });
+
     HW.onReady(function () {
         if (!(window.HWLibs && HWLibs.settings)) {
             HW.log('Viewport', 'HWLibs.settings missing — install mods/_lib/');
@@ -93,6 +105,7 @@
 
         // re-apply the persisted choice (default 16:9 needs no action)
         if (current !== '16:9') apply(current);
+        if (pendingPreset) { const p = pendingPreset; pendingPreset = null; if (p !== '16:9') apply(p); }
 
         // Menus are authored for 900x500 — revert there, restore in-level.
         let menuSaved = null;

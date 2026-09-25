@@ -7,6 +7,11 @@
 
     const HW = window.__HW__;
 
+    HW.onDisable(function () {
+        try { delete window.devTools; } catch (e) {}
+        HW.log('DevTools Helper', 'disabled — window.devTools removed');
+    });
+
     HW.onReady(function (app) {
         HW.log('DevTools Helper', 'game ready, exposing window.devTools');
 

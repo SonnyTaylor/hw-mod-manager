@@ -18,6 +18,19 @@
 
     const HW = window.__HW__;
 
+    let pendingEnabled = null;
+    function applySettings(v) {
+        if (!v || typeof v.enabled !== 'boolean') return;
+        if (window.hud) window.hud.set(v.enabled);
+        else pendingEnabled = v.enabled;
+    }
+    HW.onSettings(applySettings);
+    HW.onDisable(function () {
+        // hud.set(false) hides the readout AND restores the game's own FPS counter
+        try { if (window.hud) window.hud.set(false); } catch (e) {}
+        HW.log('HUD', 'disabled — game FPS counter restored');
+    });
+
     HW.onReady(function () {
         if (!(window.HWLibs && HWLibs.game && HWLibs.settings)) {
             HW.log('HUD', 'HWLibs.game/settings missing — install mods/_lib/');

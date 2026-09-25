@@ -1,7 +1,8 @@
 {
     "name": "DevTools Helper",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Provides helpful functions for game inspection and debugging",
     "author": "HW Mod Manager",
-    "tags": ["debug", "utility"]
+    "tags": ["debug", "utility"],
+    "hotToggle": true
 }

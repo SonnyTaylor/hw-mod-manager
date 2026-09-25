@@ -10,9 +10,50 @@ Where mods live. Each subfolder is one mod, installed to the game by copying it 
 
 ```
 mods/<name>/
-├── mod.json   # manifest: name, version, description, author, tags
+├── mod.json   # manifest: name, version, description, author, tags,
+│              #   requires, hotToggle, settings (schema)
 └── mod.js     # plain browser script (IIFE), loaded into the game page
 ```
+
+Manifest fields beyond the basics:
+
+- `"requires": ["game"]` — HWLibs the host must find before injecting (else refused).
+- `"hotToggle": true` — the mod implements `HW.onDisable` teardown and can be
+  toggled live from the manager. Without it the manager shows "applies on launch"
+  and only flips boot-time state.
+- `"settings": [...]` — schema for the manager's settings panel (rendered as native
+  UI, hot-pushed into the game):
+  `{id, type: 'select'|'slider'|'toggle'|'text'|'number'|'color', label, default, ...}`
+  — sliders take `min/max/step/unit`, selects take `options: [{value,label}]`.
+  Values are persisted by the manager in `<game>/mods/state.json` and hot-applied
+  through the command channel; at boot the host applies them right after injection.
+
+## Hot-toggle & settings contract (required for hotToggle mods)
+
+Register hooks at **IIFE top level** (the host sets `HW._current` before eval'ing
+your code):
+
+```js
+let pending = null;
+function applySettings(v) {
+    if (!window.myAPI) { pending = v; return; }   // onReady may lag injection
+    /* apply v */
+}
+HW.onSettings(applySettings);      // manager pushes saved values (boot + live)
+HW.onDisable(function () {         // teardown — restore game state, remove UI
+    /* restore */
+});
+HW.onEnable(fn);                   // rarely needed — hot-enable re-injects the mod
+```
+
+- `HW.settings()` returns the mod's saved values immediately (from state.json) —
+  use inside `onReady` instead of re-reading HWLibs.settings for manager-owned values.
+- Teardowns must leave the game as if the mod never ran (restore mutated state,
+  remove DOM elements). `HWLibs.ui` panels have `panel.destroy()` for this.
+- `HW._registerCurrent` resets the hook arrays on re-injection, so toggling
+  off→on never stacks stale teardowns.
+- Reference implementation: gravity-mod (preset select + custom factor slider,
+  deferred application until onReady).
 
 ## Mod environment
 
@@ -38,45 +79,47 @@ See **[docs/game-internals.md](../docs/game-internals.md)** — full verified gr
 Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it via
 `HWLibs.game` (see lib below) rather than hard-coding paths in mods.
 
-## Installed mods
+## Installed mods (all hot-toggleable as of v1.1.0 runtime)
 
-- `devtools` — exposes `window.devTools` inspector helpers (stage walk, screenshot).
+- `devtools` — exposes `window.devTools` inspector helpers (stage walk, screenshot); disable removes the global.
 - `gravity-mod` — `window.gravity` API (set/moon/mars/jupiter/zeroG/reset/get). Verified in-level.
+  Settings: preset select + custom factor slider; onDisable resets gravity.
 - `viewport-mod` — logical resolution/aspect presets via `window.viewport`
-  (16:9 / 21:9 / 1:1 / 9:16 portrait / fill-window, persisted, re-applies 'fill' on window
-  resize). Drives the game's OWN layout path (`app.safeSize`+`app.maxSize` →
-  `app.resize()` + `updatePixiResolution()`) — see docs/game-internals.md. Verified
-  working by user (2026-09-25). Menus are authored for 900x500 and look broken at
-  extreme aspects, so the engine auto-reverts to 16:9 in menus (silent, not persisted)
-  and re-applies the chosen preset when a level session starts (per-tick check).
+  (16:9 / 21:9 / 1:1 / 9:16 portrait / fill-window). Drives the game's OWN layout path
+  (`app.safeSize`+`app.maxSize` → `app.resize()` + `updatePixiResolution()`) — see
+  docs/game-internals.md. Menus are authored for 900x500 and look broken at extreme
+  aspects, so the engine auto-reverts to 16:9 in menus (silent, not persisted) and
+  re-applies the chosen preset when a level session starts (per-tick check).
+  Settings: aspect select; onDisable restores 16:9.
 - `freecam-mod` — free camera: hotkey **F**, pan **W/A/S/D** (50%/s of visible width,
   Shift = 4x; NOT arrows — arrows are the game's default drive keys per options135),
   wheel zoom 0.25–4. Mechanism: replaces `camera._focus` with a proxy fake whose
   GetInterpolatedPosition() returns the pan position (decoded from cam.step()/center());
-  removeSecondFocus() on enable; restore on disable. Verified by user.
+  removeSecondFocus() on enable; restore on disable. onDisable → freecam.off().
 - `hud-mod` — corner readout (fps/bodies/flags), in-level only; SUPPRESSES the game's own
   FPS counter while enabled: direct handle `session.fpsText` on session change + periodic
-  scan (`renderable=false+visible=false`, re-asserted; restored when HUD disabled).
-- `time-mod` — physics time factor via `window.timeScale` (set/get/normal; 0.05–∞,
-  presets in cheat menu). Scales `session.m_timeStep` against a per-session baseline,
-  re-applied per tick. In-level verification pending.
-- `cheat-menu` — combined cheat panel (supersedes gravity-ui, which was removed):
-  collapsible sections Gravity + Character + Viewport + Time; consumes engine console
-  APIs (`window.gravity`, `window.charEd`, `window.viewport`, `window.timeScale`) and
-  polls for them at startup because fs-order injection doesn't guarantee engines load
-  first — add new engines to that poll. UI plumbing is all in `HWLibs.ui` — see its
-  header for the section-scoped API.
-- `character-editor` — break-limit multiplier (Normal/Tough/Iron/GOD presets + slider,
-  0.05–1e9 = paper ↔ god), hotkey **I** = god toggle, Stop bleed (bleedCounter reset).
-  Console API `window.charEd` (setFactor/getFactor/heal/respawn/info) — `respawn()` is
+  scan, restored when HUD is disabled (hud.set(false) does both).
+  Settings: show readout toggle; onDisable → hud.set(false).
+- `time-mod` — physics time factor via `window.timeScale` (set/get/normal; 0.05–∞).
+  Scales `session.m_timeStep` against a per-session baseline, re-applied per tick.
+  Settings: factor slider; onDisable → timeScale.normal().
+- `cheat-menu` — combined cheat panel: collapsible sections Gravity / Character /
+  Viewport / Time / Camera / HUD / Sandbox; consumes engine console APIs (`window.gravity`,
+  `window.charEd`, `window.viewport`, `window.timeScale`, `window.freecam`, `window.hud`,
+  `window.physgun`) and polls for them at startup. onDisable removes the panel (`.hw-panel`).
+- `character-editor` — break-limit multiplier (Normal/Tough/Iron/GOD presets + custom
+  slider, 0.05–1e9 = paper ↔ god), hotkey **I** = god toggle, Stop bleed.
+  Console API `window.charEd` (setFactor/getFactor/heal/respawn/info). `respawn()` is
   a full level restart via `sessionController.restartLevel()` (documented in
   docs/game-internals.md); it is NOT in the cheat-menu UI because "heal = level restart"
   was confusing. Limb regrow in place is not feasible (destroyed Box2D joints; direct
   character.reset()/create() leak bodies — never call them). Limits are DISCOVERED per
-  character instance (own props matching `/Limit/`) — 20 keys found live, don't
-  hard-code them. Baseline captured per character object; re-applied every tick so
-  respawns/level restarts are covered. Verified live: discovery, god-mode application,
-  restartLevel behavior.
+  character instance (own props matching `/Limit/`) — 20 keys found live, don't hard-code
+  them. Baseline captured per character object; re-applied every tick so respawns/level
+  restarts are covered. Settings: durability preset + custom factor; onDisable → setFactor(1).
+- `physgun-mod` — physics gun: grab/drag/fling bodies (hotkey **G** to arm, LMB grab).
+  Skips static bodies, ground and endBlock. Settings: strength slider (0.25–5x);
+  onDisable → physgun.off().
 
 ## Mod library idea (TODO — shared code between mods)
 

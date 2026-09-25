@@ -50,26 +50,40 @@ mods, and libs are platform-neutral.
 ## Architecture
 
 ```
-┌─ main.js (patched: devTools:!0 + appended hook)
+┌─ Desktop manager (app/ — Tauri 2, Rust backend + Svelte frontend)
+│      ├─ game detection (port of tools/platform.js), config override in app-data
+│      ├─ scans <game>/mods/, renders mod cards + schema-driven settings panels
+│      ├─ writes <game>/mods/state.json (per-mod enabled + settings)
+│      ├─ hot channel: appends JSON commands to <game>/mods/.hw-commands.jsonl
+│      └─ LAUNCH button: exe (Windows) / steam -applaunch 4705510 (Linux)
+│
+├─ main.js (patched: devTools:!0 + appended hook)
 │      └─ app.on('web-contents-created') → did-finish-load → require('./mod-host.js')(wc)
 │
 ├─ mod-host.js (main process, full Node)
 │      ├─ URL guard: only touches totaljerkface.com pages
 │      ├─ F12/Ctrl+Shift+I → openDevTools toggle (before-input-event)
 │      ├─ await wc.executeJavaScript(RUNTIME)  → defines window.__HW__ in page
-│      └─ for each mods/<dir>/mod.js: wc.executeJavaScript(code + registration)
-│             wrapped in-page try/catch so real errors come back over the promise
+│      ├─ reads state.json → injects enabled mods only (disabled ones register bare)
+│      ├─ polls mods/.hw-commands.jsonl (250ms, byte-offset) → toggle/settings/eval ops
+│      │     toggle-on = re-inject mod from disk; toggle-off = run mod's onDisable teardowns
+│      └─ applies saved settings per mod right after injection (onSettings)
 │
 └─ Game page (main world, sandboxed from Node but has full game access)
        ├─ window.__HW__ runtime: onReady/onTick/getApp/getStage/log/mods[]
+       │   + hot registry: HW.settings()/onDisable/onSettings/onEnable,
+       │   _registerCurrent/_disableMod/_applySettings
        ├─ mods as plain browser scripts (NO CommonJS — no require/module/exports)
-       └─ PixiJS app discovered by probing canvases for {renderer,stage,ticker}
+       └─ PixiJS app discovered by preload pre-hook (Function.prototype.call trap)
 ```
+
+`state.json` shape (manager ⇄ mod-host contract): `{"mods":{"<folder-id>":{"enabled":bool,"settings":{...}}}}`.
 
 ## File Map
 
 | Path | Purpose |
 |------|---------|
+| `app/` | Desktop mod manager (Tauri 2: Rust backend `src-tauri/`, Svelte 5 frontend `src/`). Scans/toggles mods, settings UI, hot channel writer, game launcher. |
 | `tools/patch-game.js` | Patcher: exe backup + fuse flip, asar backup/extract/patch/pack, restore, status. Idempotent. |
 | `tools/platform.js` | Shared platform/install detection: boot-binary name per OS, Steam paths (incl. Flatpak), appid, `detectGamePath()`. |
 | `tools/hw.js` | Dev CLI (`hw dev` is the main loop). |
@@ -117,22 +131,19 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
 
 ## Known Issues / TODO
 
+- **Desktop manager: UI shell + core working (v0.1)** — Tauri 2 app in `app/` (bun, Svelte 5 + Tailwind v4): game detection with status chips, mod list with mechanical toggle switches, schema-driven settings panels, LAUNCH via Steam, mods-folder opener. **Hot-toggle + hot-settings verified end-to-end** (2026-09-25): manager → state.json + `.hw-commands.jsonl` → mod-host executes in page (log shows `Hot-disabled/-enabled`, `Settings applied`); re-injection replaces list entries without duplication. All 9 mods now hot-toggleable with teardowns (gravity/character/viewport/time/hud/freecam/physgun/cheat-menu/devtools).
+- **Rust patcher port: NOT STARTED** — manager can't yet patch/fuse-flip/repack the game itself; status shows backups-based patch detection. Until then a fresh install needs one `node tools/hw.js dev` run.
+- **Marketplace: NOT STARTED** — planned as community git repo hosting `index.json` (metadata + zip URLs); manager tab is a placeholder describing the pipeline. Creator flow = template + PR.
+- **Manager PATCH status dot** — was showing warn despite both backups present on Linux; verify `GameInfo` detection on next manager run (re-check `binary_patched`/`asar_patched` paths).
+- Mod manager GUI — **replaced by the desktop manager (`app/`)**; cheat-menu's panel remains the in-game UI.
 - **Linux (native build, appid 4705510): verified working** (2026-09-25) — fuse flip on `happy-wheels-bin`, patched asar boots, runtime + `_lib` injected, eval bridge confirmed `__HW__.ready === true` with the app captured (obf. class `D4`). Game must be launched through Steam; a network outage stalls the page before `did-finish-load` (no mod-host log) — retry when connectivity is stable.
 - **Mod library: DONE (v1)** — loader loads `mods/_lib/*.js` before mods into `window.HWLibs`;
   mod.json `"requires"` gates injection. Libs: `game` (graph accessors + gravity helpers),
   `settings` (namespaced localStorage), `ui` (panel factory: drag/collapse/persist, collapsible
-  sections, sliders/buttons/toggle-switches, accent colors). Detailed internals now live in
-  `docs/game-internals.md`.
+  sections, sliders/buttons/toggle-switches, accent colors, panel.destroy() teardown).
+  Detailed internals live in `docs/game-internals.md`.
 - Gravity mod **verified working in-level** (moon/jupiter tested, screenshot 2026-09-25).
-- **Viewport control** (`viewport-mod`): aspect presets via the game's own layout path
-  (`app.safeSize`/`maxSize` + `app.resize()`) — verified working by user (2026-09-25).
-- **Time control** (`time-mod`): physics slow-mo/fast via `session.m_timeStep` — built,
-  injected OK; in-level verification pending.
-- **Cheat menu** (`mods/cheat-menu`): combined cheat panel superseding `gravity-ui`
-  (removed) — collapsible sections Gravity / Character / Viewport / Time; engines stay
-  UI-free and are polled for at startup. Break-limit factor 0.05–1e9 (paper ↔ god).
-  Heal button intentionally absent: limb regrow isn't feasible (destroyed Box2D joints;
-  direct character.reset()/create() leak bodies).
-- Settings storage (DevTools → Application → Local Storage): key `options135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target. Snoop session 2026-09-25 yielded many new levers — see docs/game-internals.md (hwNative IPC surface incl. `downloads` level storage API, session.fpsText direct handle, contact-listener Maps, level actionsVector, endBlock finish line).
-- Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — cheat-menu's panel is the UI proof-of-concept.
+- **Viewport control** (`viewport-mod`): aspect presets via the game's own layout path — verified working by user (2026-09-25).
+- **Time control** (`time-mod`): physics slow-mo/fast via `session.m_timeStep` — built, injected OK; in-level verification pending.
+- Settings storage (DevTools → Application → Local Storage): key `options135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target. See docs/game-internals.md (hwNative IPC surface incl. `downloads` level storage API, session.fpsText direct handle, contact-listener Maps, level actionsVector, endBlock finish line).
 - CDP debugger-holder mystery: something attaches to the game page at startup and blocks `wc.debugger` (see loader/AGENTS.md).

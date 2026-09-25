@@ -1,7 +1,34 @@
 {
     "name": "Gravity Modifier",
-    "version": "1.0.0",
-    "description": "Allows changing the game's gravity in real-time",
+    "version": "1.1.0",
+    "description": "Change the game's gravity in real-time — presets (moon, mars, jupiter, zero-G) or a custom factor. Settings apply live.",
     "author": "HW Mod Manager",
-    "tags": ["gameplay", "physics"]
+    "tags": ["gameplay", "physics"],
+    "hotToggle": true,
+    "settings": [
+        {
+            "id": "preset",
+            "type": "select",
+            "label": "Preset",
+            "default": "normal",
+            "options": [
+                { "value": "normal", "label": "Normal (1x)" },
+                { "value": "moon", "label": "Moon (0.16x)" },
+                { "value": "mars", "label": "Mars (0.38x)" },
+                { "value": "jupiter", "label": "Jupiter (2.53x)" },
+                { "value": "zeroG", "label": "Zero-G (0x)" },
+                { "value": "custom", "label": "Custom (use factor)" }
+            ]
+        },
+        {
+            "id": "factor",
+            "type": "slider",
+            "label": "Factor",
+            "default": 1,
+            "min": 0,
+            "max": 5,
+            "step": 0.05,
+            "unit": "x"
+        }
+    ]
 }

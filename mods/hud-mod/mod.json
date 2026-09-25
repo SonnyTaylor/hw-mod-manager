@@ -1,8 +1,17 @@
 {
-    "name": "hud-mod",
-    "version": "0.1.1",
-    "description": "Corner HUD: fps, body count, time/gravity factors, god/freecam state",
-    "author": "",
-    "tags": ["debug", "ui"],
-    "requires": ["game", "settings"]
+    "name": "HUD Readout",
+    "version": "0.2.0",
+    "description": "Corner readout (fps, bodies, time/grav/freecam status). Hides the game's own FPS counter while enabled and restores it when disabled.",
+    "author": "HW Mod Manager",
+    "tags": ["ui", "debug"],
+    "requires": ["game", "settings"],
+    "hotToggle": true,
+    "settings": [
+        {
+            "id": "enabled",
+            "type": "toggle",
+            "label": "Show readout",
+            "default": true
+        }
+    ]
 }

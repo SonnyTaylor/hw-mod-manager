@@ -21,6 +21,12 @@
 
     const HW = window.__HW__;
 
+    // freecam.disable() restores the camera's real focus handler
+    HW.onDisable(function () {
+        try { if (window.freecam) window.freecam.off(); } catch (e) {}
+        HW.log('FreeCam', 'disabled — camera restored');
+    });
+
     HW.onReady(function () {
         if (!(window.HWLibs && HWLibs.game && HWLibs.settings)) {
             HW.log('FreeCam', 'HWLibs.game/settings missing — install mods/_lib/');

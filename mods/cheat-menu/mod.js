@@ -28,6 +28,12 @@
 
     const HW = window.__HW__;
 
+    // Hot-disable teardown: remove the panel from the DOM (see mods/AGENTS.md).
+    HW.onDisable(function () {
+        document.querySelectorAll('.hw-panel').forEach(el => el.remove());
+        HW.log('Cheat Menu', 'disabled — panel removed');
+    });
+
     HW.onReady(function () {
         if (!(window.HWLibs && HWLibs.ui && HWLibs.game && HWLibs.settings)) {
             HW.log('Cheat Menu', 'HWLibs missing — install mods/_lib/');

@@ -1,8 +1,24 @@
 {
-    "name": "viewport-mod",
-    "version": "0.1.1",
-    "description": "Logical resolution/aspect control: 16:9, 21:9, 1:1, 9:16 portrait, fill-window",
-    "author": "",
+    "name": "Viewport Control",
+    "version": "0.2.0",
+    "description": "Change the game's logical resolution / aspect — 16:9, 21:9, 1:1, portrait or fill-window, using the game's own layout path.",
+    "author": "HW Mod Manager",
     "tags": ["display", "viewport"],
-    "requires": ["game", "settings"]
+    "requires": ["settings"],
+    "hotToggle": true,
+    "settings": [
+        {
+            "id": "preset",
+            "type": "select",
+            "label": "Aspect",
+            "default": "16:9",
+            "options": [
+                { "value": "16:9", "label": "16:9 (game default)" },
+                { "value": "21:9", "label": "21:9 ultrawide" },
+                { "value": "1:1", "label": "1:1 square" },
+                { "value": "9:16", "label": "9:16 portrait" },
+                { "value": "fill", "label": "Fill window" }
+            ]
+        }
+    ]
 }

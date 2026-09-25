@@ -15,11 +15,28 @@
  * Only session.m_timeStep is touched — never the game's frame loop or accumulator
  * (steps/_accumulatedStep), so rendering stays at full fps while the world advances
  * slower/faster.
+ *
+ * Hot-toggle + settings (see mods/AGENTS.md contract):
+ *   onDisable  → resets the factor to 1x (normal time).
+ *   onSettings → applies the manager's saved factor; deferred until
+ *                window.timeScale exists (onReady may lag the injection).
  */
 (function () {
     'use strict';
 
     const HW = window.__HW__;
+
+    let pendingFactor = null;
+    function applySettings(v) {
+        if (!v || typeof v.factor !== 'number') return;
+        if (window.timeScale) window.timeScale.set(v.factor);
+        else pendingFactor = v.factor;
+    }
+    HW.onSettings(applySettings);
+    HW.onDisable(function () {
+        try { if (window.timeScale) window.timeScale.normal(); } catch (e) {}
+        HW.log('Time Mod', 'disabled — time restored to 1x');
+    });
 
     HW.onReady(function () {
         if (!(window.HWLibs && HWLibs.game && HWLibs.settings)) {
@@ -72,5 +89,7 @@
         });
 
         HW.log('Time Mod', 'engine ready — window.timeScale (UI: cheat-menu mod)');
+
+        if (pendingFactor != null) { const f = pendingFactor; pendingFactor = null; timeScale.set(f); }
     });
 })();

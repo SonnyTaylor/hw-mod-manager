@@ -1,8 +1,9 @@
 {
-    "name": "freecam-mod",
-    "version": "0.2.0",
-    "description": "Free camera: detach camera in-level, arrow-key pan, mouse-wheel zoom. Hotkey F.",
-    "author": "",
+    "name": "Free Camera",
+    "version": "0.3.0",
+    "description": "Free camera: hotkey F, pan with W/A/S/D (Shift = 4x), mouse-wheel zoom. Camera snaps back to the character on disable.",
+    "author": "HW Mod Manager",
     "tags": ["camera", "ui"],
-    "requires": ["game", "settings"]
+    "requires": ["game", "settings"],
+    "hotToggle": true
 }

@@ -3,12 +3,18 @@
  *
  * Called from patched main.js after the window finishes loading.
  * Injects the mod runtime into the page's main world, then loads
- * every mod found in the mods/ directory as plain browser JavaScript.
+ * every enabled mod found in the mods/ directory as plain browser JavaScript.
  *
  * Why main process? sandbox:true + contextIsolation:true in the game's
  * window means the renderer has no Node access. But executeJavaScript()
  * from the main process runs directly in the page's main world — full
  * access to PixiJS and game objects, no sandbox restrictions.
+ *
+ * Hot-toggle: the desktop manager appends commands to mods/.hw-commands.jsonl;
+ * startCommandChannel() consumes them (byte-offset, 250ms poll) and can
+ * enable/disable mods and push settings into the live page without a restart.
+ * Boot-time enable/disable + per-mod settings live in mods/state.json,
+ * written by the same manager.
  */
 
 const fs = require('fs');
@@ -27,14 +33,30 @@ function getModsDir() {
     return path.join(process.resourcesPath, '..', 'mods');
 }
 
+// --- persisted state (written by the desktop manager) --------------------
+function readState(modsDir) {
+    try { return JSON.parse(fs.readFileSync(path.join(modsDir, 'state.json'), 'utf8')); }
+    catch (e) { return { mods: {} }; }
+}
+function isEnabled(id, state) {
+    return !state || !state.mods || !state.mods[id] || state.mods[id].enabled !== false;
+}
+function savedSettings(id, state) {
+    return (state && state.mods && state.mods[id] && state.mods[id].settings) || {};
+}
+
 // Core runtime injected before any mod. Provides a tiny API surface.
 const RUNTIME = `
 window.__HW__ = {
-    version: '1.0.0',
+    version: '1.1.0',
     mods: [],
     ready: false,
     _readyCallbacks: [],
     _tickCallbacks: [],
+    // Hot-toggle registries. _mods[id] = { manifest, disable:[], enable:[], onSettings:[] }
+    _mods: {},
+    _settingsStore: {},
+    _current: null,
 
     onReady(cb) {
         if (this.ready) cb(this.app);
@@ -47,6 +69,51 @@ window.__HW__ = {
     getStage() { return this.app && this.app.stage; },
     log(mod, ...args) {
         console.log('%c[HW]%c ' + mod + ':', 'color:#0af;font-weight:bold', '', ...args);
+    },
+
+    // --- hot-toggle contract (mods call these at IIFE top level) ---
+    // Saved settings for this mod ({} before the manager saves any).
+    settings(id) { return (this._settingsStore || {})[id || this._current] || {}; },
+    // Register teardown / re-enable / live-settings hooks for the mod being injected.
+    onDisable(fn) { this._hook(fn, 'disable'); },
+    onEnable(fn) { this._hook(fn, 'enable'); },
+    onSettings(fn) { this._hook(fn, 'onSettings'); },
+    _hook(fn, kind) {
+        const id = this._current;
+        if (!id) { console.error('[HW] on' + kind.slice(0,1).toUpperCase() + kind.slice(1) + ' called outside mod injection'); return; }
+        const m = (this._mods[id] = this._mods[id] || { manifest: null, disable: [], enable: [], onSettings: [] });
+        m[kind].push(fn);
+    },
+    // Host calls after mod code evaluates: record manifest + refresh the mods list.
+    _registerCurrent(manifest) {
+        const id = this._current || manifest.id;
+        const m = (this._mods[id] = this._mods[id] || { manifest: null, disable: [], enable: [], onSettings: [] });
+        // Re-injection (hot enable) must not stack stale teardowns.
+        m.manifest = Object.assign({}, manifest, { id, enabled: true });
+        m.disable.length = 0; m.enable.length = 0; m.onSettings.length = 0;
+        const i = this.mods.findIndex(e => e.id === id);
+        if (i >= 0) this.mods[i] = m.manifest; else this.mods.push(m.manifest);
+        return 'registered|' + id;
+    },
+    // Manager hot-disable: run teardowns, flip the list entry.
+    _disableMod(id) {
+        const m = this._mods[id];
+        if (!m) return 'not-loaded';
+        for (const fn of m.disable) { try { fn(); } catch (e) { console.error('[HW] onDisable error:', e); } }
+        m.disable.length = 0;
+        const entry = this.mods.find(e => e.id === id);
+        if (entry) entry.enabled = false;
+        return 'ok';
+    },
+    // Manager pushes settings values; mods subscribed via onSettings receive them.
+    _applySettings(id, values) {
+        this._settingsStore[id] = values || {};
+        const m = this._mods[id];
+        if (!m) return 'no-mod';
+        for (const fn of m.onSettings) { try { fn(this._settingsStore[id]); } catch (e) { console.error('[HW] onSettings error:', e); } }
+        const entry = this.mods.find(e => e.id === id);
+        if (entry) entry.settings = this._settingsStore[id];
+        return 'ok';
     },
 
     // Called by the CDP discovery loop once the live renderer is found.
@@ -153,6 +220,78 @@ function startEvalBridge(wc) {
     }, 500);
 }
 
+// --- Command channel (desktop manager → live page) ------------------------
+// The manager appends one JSON command per line to mods/.hw-commands.jsonl:
+//   {"op":"toggle","id":"gravity-mod","enabled":false}
+//   {"op":"settings","id":"gravity-mod","settings":{"factor":0.3}}
+//   {"op":"eval","code":"..."}
+// Consumed byte-offset style so nothing runs twice; truncation resets it.
+function startCommandChannel(wc, modsDir) {
+    const cmdFile = path.join(modsDir, '.hw-commands.jsonl');
+    let offset = 0;
+    let busy = false;
+    let stopped = false;
+    wc.once('destroyed', () => { stopped = true; });
+
+    const timer = setInterval(async () => {
+        if (stopped || busy || wc.isDestroyed()) return;
+        let stat;
+        try { stat = fs.statSync(cmdFile); } catch { offset = 0; return; }
+        if (stat.size < offset) offset = 0;           // truncated by the writer
+        if (stat.size === offset) return;
+        busy = true;
+        try {
+            const fh = fs.openSync(cmdFile, 'r');
+            const buf = Buffer.alloc(stat.size - offset);
+            fs.readSync(fh, buf, 0, buf.length, offset);
+            fs.closeSync(fh);
+            let text = buf.toString('utf8');
+            let consumed = buf.length;
+            if (!text.endsWith('\n')) {                 // partial line — wait for the rest
+                const idx = text.lastIndexOf('\n');
+                if (idx < 0) { busy = false; return; }
+                text = text.slice(0, idx + 1);
+                consumed = Buffer.byteLength(text, 'utf8');
+            }
+            offset += consumed;
+            for (const line of text.split('\n')) {
+                if (!line.trim()) continue;
+                let cmd = null;
+                try { cmd = JSON.parse(line); } catch (e) { log('Bad command line:', line.slice(0, 120)); continue; }
+                try { await handleCommand(wc, modsDir, cmd); }
+                catch (e) { log(`Command ${cmd.op} failed:`, e.message); }
+            }
+        } finally {
+            busy = false;
+        }
+    }, 250);
+}
+
+async function handleCommand(wc, modsDir, cmd) {
+    log('Command:', cmd.op, cmd.id || '');
+    if (cmd.op === 'toggle') {
+        if (cmd.enabled) {
+            const state = readState(modsDir);
+            const res = await injectMod(wc, modsDir, cmd.id, state);
+            if (res.ok) log(`Hot-enabled: ${cmd.id} [${res.result}]`);
+            else log(`Hot-enable FAILED: ${cmd.id} → ${res.result}`);
+        } else {
+            const expr = `window.__HW__._disableMod(${JSON.stringify(cmd.id)})`;
+            const r = await wc.executeJavaScript(expr, true);
+            log(`Hot-disabled: ${cmd.id} → ${r}`);
+        }
+    } else if (cmd.op === 'settings') {
+        const expr = `window.__HW__._applySettings(${JSON.stringify(cmd.id)}, ${JSON.stringify(cmd.settings || {})})`;
+        const r = await wc.executeJavaScript(expr, true);
+        log(`Settings applied: ${cmd.id} → ${r}`);
+    } else if (cmd.op === 'eval') {
+        const r = await wc.executeJavaScript(cmd.code, true);
+        log(`Eval → ${String(r).slice(0, 200)}`);
+    } else {
+        log('Unknown command op:', cmd.op);
+    }
+}
+
 // --- Live PixiJS discovery via CDP ---------------------------------------
 // The obfuscated game keeps the PIXI.Application inside closures — no global,
 // no canvas back-reference. But Pixi's InteractionManager attaches event
@@ -251,6 +390,81 @@ function startDiscoveryLoop(wc) {
     }, 4000);
 }
 
+// --- Mod injection (shared by boot loop and hot-enable) -------------------
+
+function readManifest(modsDir, dirName) {
+    let manifest = { name: dirName, version: '1.0.0' };
+    const manifestPath = path.join(modsDir, dirName, 'mod.json');
+    try {
+        if (fs.existsSync(manifestPath)) {
+            manifest = { ...manifest, ...JSON.parse(fs.readFileSync(manifestPath, 'utf8')) };
+        }
+    } catch (e) {
+        log(`Bad mod.json in ${dirName}:`, e.message);
+    }
+    return manifest;
+}
+
+// Inject one mod into the page. Returns { ok, result }.
+async function injectMod(wc, modsDir, dirName, state) {
+    const code = fs.readFileSync(path.join(modsDir, dirName, 'mod.js'), 'utf8');
+    const manifest = { ...readManifest(modsDir, dirName) };
+
+    const registration = `
+        try {
+            const __req = ${JSON.stringify(manifest.requires || [])}.filter(n => !(window.HWLibs && window.HWLibs[n]));
+            if (__req.length) return 'MISSING_LIBS|' + __req.join(',');
+            window.__HW__._registerCurrent(${JSON.stringify(manifest)});
+            console.log('[HW] Loaded mod: ${manifest.name} v${manifest.version}');
+        } catch(e) {
+            console.error('[HW] Mod ${manifest.name} failed:', e);
+        }
+    `;
+
+    // Wrap the mod in try/catch INSIDE the page so we get the real error
+    // back over the promise (executeJavaScript's generic "script failed
+    // to execute" message is useless for debugging).
+    const wrapped = `(() => {
+    window.__HW__._current = ${JSON.stringify(dirName)};
+    try {
+        ${code}
+        ${registration}
+        return 'OK|mods=' + (window.__HW__ ? window.__HW__.mods.length : '?');
+    } catch (e) {
+        return 'ERR|' + (e && e.message ? e.message : String(e)) + '|' + (e && e.stack ? String(e.stack).split('\\n').slice(0,3).join(' << ') : '');
+    }
+})()`;
+
+    try {
+        const result = await wc.executeJavaScript(wrapped, true);
+        if (result.startsWith('OK')) {
+            // Saved settings (manager state.json) are applied right after
+            // registration so mods observe their configured values.
+            const vals = savedSettings(dirName, state);
+            if (Object.keys(vals).length) {
+                try {
+                    await wc.executeJavaScript(
+                        `window.__HW__._applySettings(${JSON.stringify(dirName)}, ${JSON.stringify(vals)})`,
+                        true,
+                    );
+                    log(`Settings applied at boot: ${dirName} (${Object.keys(vals).join(', ')})`);
+                } catch (e) {
+                    log(`Settings apply failed for ${dirName}:`, e.message);
+                }
+            }
+            return { ok: true, result, manifest };
+        } else if (result.startsWith('MISSING_LIBS')) {
+            log(`Skipped ${dirName}: missing libs (${result.slice('MISSING_LIBS|'.length)}) — add them to mods/_lib/`);
+        } else {
+            log(`Failed ${dirName}: ${result}`);
+        }
+        return { ok: false, result, manifest };
+    } catch (e) {
+        log(`Failed to inject ${dirName}:`, e.message);
+        return { ok: false, result: e.message, manifest };
+    }
+}
+
 module.exports = async function loadMods(wc) {
     // Only inject into the actual game page — skip service workers,
     // devtools pages, and other headless webContents Electron spawns.
@@ -297,6 +511,10 @@ module.exports = async function loadMods(wc) {
         return;
     }
 
+    const state = readState(modsDir);
+    startCommandChannel(wc, modsDir);
+    log('Command channel armed (mods/.hw-commands.jsonl)');
+
     let entries;
     try {
         entries = fs.readdirSync(modsDir, { withFileTypes: true });
@@ -325,64 +543,26 @@ module.exports = async function loadMods(wc) {
 
     for (const entry of entries) {
         if (!entry.isDirectory()) continue;
+        const dirName = entry.name;
+        const modJs = path.join(modsDir, dirName, 'mod.js');
+        if (dirName === '_lib' || !fs.existsSync(modJs)) continue;
 
-        const modJs = path.join(modsDir, entry.name, 'mod.js');
-        const manifestPath = path.join(modsDir, entry.name, 'mod.json');
+        const manifest = readManifest(modsDir, dirName);
 
-        if (!fs.existsSync(modJs)) continue;
-
-        let manifest = { name: entry.name, version: '1.0.0' };
-        try {
-            if (fs.existsSync(manifestPath)) {
-                manifest = { ...manifest, ...JSON.parse(fs.readFileSync(manifestPath, 'utf8')) };
-            }
-        } catch (e) {
-            log(`Bad mod.json in ${entry.name}:`, e.message);
-        }
-
-        let code;
-        try {
-            code = fs.readFileSync(modJs, 'utf8');
-        } catch (e) {
-            log(`Cannot read ${modJs}:`, e.message);
+        // Disabled at boot: register in the mods list without injecting code,
+        // so the manager (and HW.mods) still shows it exists.
+        if (!isEnabled(dirName, state)) {
+            const expr = `(() => {
+                const m = Object.assign({}, ${JSON.stringify(manifest)}, { id: ${JSON.stringify(dirName)}, enabled: false });
+                if (!window.__HW__.mods.find(e => e.id === m.id)) window.__HW__.mods.push(m);
+                return 'ok';
+            })()`;
+            try { await wc.executeJavaScript(expr, true); log(`Registered (disabled): ${dirName} v${manifest.version}`); }
+            catch (e) { log(`Failed registering ${dirName}:`, e.message); }
             continue;
         }
 
-        const registration = `
-            try {
-                const __req = ${JSON.stringify(manifest.requires || [])}.filter(n => !(window.HWLibs && window.HWLibs[n]));
-                if (__req.length) return 'MISSING_LIBS|' + __req.join(',');
-                window.__HW__.mods.push(${JSON.stringify(manifest)});
-                console.log('[HW] Loaded mod: ${manifest.name} v${manifest.version}');
-            } catch(e) {
-                console.error('[HW] Mod ${manifest.name} failed:', e);
-            }
-        `;
-
-        // Wrap the mod in try/catch INSIDE the page so we get the real error
-        // back over the promise (executeJavaScript's generic "script failed
-        // to execute" message is useless for debugging).
-        const wrapped = `(() => {
-    try {
-        ${code}
-        ${registration}
-        return 'OK|hw=' + typeof window.__HW__ + '|mods=' + (window.__HW__ ? window.__HW__.mods.length : '?');
-    } catch (e) {
-        return 'ERR|' + (e && e.message ? e.message : String(e)) + '|' + (e && e.stack ? String(e.stack).split('\\n').slice(0,3).join(' << ') : '');
-    }
-})()`;
-
-        try {
-            const result = await wc.executeJavaScript(wrapped, true);
-            if (result.startsWith('OK')) {
-                log(`Injected: ${manifest.name} v${manifest.version} [${result}]`);
-            } else if (result.startsWith('MISSING_LIBS')) {
-                log(`Skipped ${manifest.name}: missing libs (${result.slice('MISSING_LIBS|'.length)}) — add them to mods/_lib/`);
-            } else {
-                log(`Failed ${manifest.name}: ${result}`);
-            }
-        } catch (e) {
-            log(`Failed to inject ${manifest.name}:`, e.message);
-        }
+        const res = await injectMod(wc, modsDir, dirName, state);
+        if (res.ok) log(`Injected: ${manifest.name} v${manifest.version} [${res.result}]`);
     }
 };
