@@ -23,7 +23,13 @@ mods/<name>/
   - `HW.getApp()` / `HW.getStage()` — PixiJS application / root stage.
   - `HW.log(modName, ...args)` — prefixed console log (visible in F12 console).
   - `HW.mods` — registered mod list.
-- Game settings: `window.HW_SETTINGS` (frozen: siteURL etc.). User options live in **localStorage key `option135`** — JSON with `keyCodes` (87=W accelerate, 83=S decelerate, 65=A lean back, 68=D lean forward, 32=primary, 16/17=secondary, 90=Z eject, 67=C camera), `gamepadBindings`, `bloodSetting` (1–5), `use60FPS`.
+- Game settings: `window.HW_SETTINGS` (frozen: siteURL etc.). User options live in
+  **localStorage key `options135`** (plural — NOT `option135`) — JSON with `keyCodes`
+  (NAMED fields: `accelerateCode` 38↑, `decelerateCode` 40↓, `leanForwardCode` 39→,
+  `leanBackCode` 37←, `primaryActionCode` 32, `secondaryAction1Code` 16, `secondaryAction2Code` 17,
+  `ejectCode` 90, `switchCameraCode` 67 — ARROW KEYS ARE THE DEFAULT DRIVE KEYS),
+  `gamepadBindings`, `bloodSetting` (1–5), `use60FPS`, `fatlady` easter-egg flag.
+  Written back as JSON — the game reads it on load; remap mods write here.
 
 ## Verified game object graph
 

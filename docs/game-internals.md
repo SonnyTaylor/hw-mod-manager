@@ -139,6 +139,58 @@ Plus `lostLimbs` (Set), `bleedCounter`, handlers (`keyDownHandler`, `contactAddH
   load/restart); base captured per session instance. Implemented in `time-mod`
   (`window.timeScale`). In-level verification pending.
 
+## Session extras (snooped live in-level 2026-09-25)
+
+| Field | Meaning / lever |
+|---|---|
+| `session.fpsText` (t) / `session.fpsCounter` (K: beginTime, prevTime, frames, textField) | THE built-in FPS counter, per-session. Direct handle — HUD mod can suppress instantly on session change (no stage-walk race). |
+| `session.paused`, `session.inputAllowed` | pause toggle / freeze player input — live-writable. |
+| `session.enableCameraMode`, `cameraModeInvocations`, `useDebugger` | built-in camera-mode machinery. |
+| `session.m_iterations` (10), `_iteration` | solver iterations. |
+| `session.timeIntegrity` | some integrity tracker (slow-mo works fine regardless). |
+| `session._replayData` (fu) | replay data object; `sessionController.replayLevel()` exists. |
+
+### Contact listener (class R on session._contactListener)
+
+Four hookable Maps: `_addListeners`, `_removeListeners`, `_persistListeners`, `_resultListeners`
+— contact begin/end/persist/result events. A mod could add its own listener for custom
+triggers (landing detection, collision sounds, achievements).
+
+### Particle controller (class PY on session._particleController)
+
+`emitters: Array` (empty when no active particles), `particleDict: Map`, `containerSprite`,
+`bloodBmdArray`/`bloodSprite`/`bloodBMD1` + `blurFilter`/`thresholdFilter`/`bevelFilter`
+— the gore rendering pipeline. Levers: emitter spawning, blood filter strength.
+
+### Level (class PS/i2, live 2026-09-25)
+
+- `endBlock: U` — the finish line: `{body: e, shape, aabb: e}`. Aabb overlap = level complete.
+- `actionsVector: Array` — level actions/moving platforms: entries have
+  `{id, speed, distance, waitTime, body, prisJoint, mc, counter, raising, waiting}` —
+  LIVE-writable (e.g. crank platform speed to 10x). Also `actionsToRemove`,
+  `singleActionVector`, `keepVector`, `backDrops`, `paintBodyVector`/`paintItemVector`,
+  `levelBody: e` (ground body).
+- `levelData: t` is a display container (children), not plain data.
+
+### hwNative — the preload IPC bridge (full surface, snooped 2026-09-25)
+
+- `steam.call(1)` — raw steamworks call
+- `presence.setState(1)` — Steam Rich Presence text (writable — fun custom status)
+- `deepLink.pending()/onOpen(1)` — tjf:// deep links
+- `overlay.onActivated(1)` — Steam overlay open/close → auto-pause candidate
+- `fullscreen.set(1)/get()/onChange(1)` — quick fullscreen toggle target
+- `auth.login(2)/getUser()/logout()/steamLogin(1)/linkSteam()` — account (don't touch)
+- `friends.online()/findByTjfName(1)/names()/onChanged(1)` — social lookup
+- **`downloads.list()/save(3)/load(1)/delete(1)`** — LOCAL LEVEL STORAGE API. Combined with
+  `happyWheels.loadLevelByID`/`enterSession` this is the lever for a custom level launcher.
+- `cursorPos()` — native cursor pos; `exit()`, `loaded()`
+
+### happyWheels screen (o4) — screen-level machinery
+
+`enterSession`, `loadLevelByID`, `loadReplayByID`, `openEditor`/`closeEditor`,
+`openSessionController`, `receiveSessionFromMainMenu`, `openDeepLink`, `createDebugText`
+— programmatic level loading and editor access live here.
+
 ## UI overlay pattern (proven by gravity-ui)
 
 - Plain DOM element on `document.body`, `position:fixed; z-index:99999` — sits above the canvas.
@@ -148,7 +200,10 @@ Plus `lostLimbs` (Set), `bleedCounter`, handlers (`keyDownHandler`, `contactAddH
 
 ## localStorage
 
-- `option135` — the game's own settings JSON: `keyCodes` (87=W accelerate, 83=S decelerate,
-  65=A lean back, 68=D lean forward, 32=primary, 16/17=secondary, 90=Z eject, 67=C camera),
-  `gamepadBindings`, `bloodSetting` (1–5), `use60FPS`.
-- Mods should use their own namespaced keys (`hw.<name>`) — see `HWLibs.settings`.
+- `options135` (PLURAL — the game's own settings JSON; earlier docs said `option135`, wrong):
+  `keyCodes` (NAMED fields, arrow defaults: `accelerateCode` 38↑, `decelerateCode` 40↓,
+  `leanForwardCode` 39→, `leanBackCode` 37←, `primaryActionCode` 32, `secondaryAction1Code` 16,
+  `secondaryAction2Code` 17, `ejectCode` 90, `switchCameraCode` 67), `gamepadBindings`
+  (b0/b1/b4–b8/b11/b14/b15/a0± → action names), `bloodSetting` (1–5), `use60FPS`,
+  `fatlady` easter-egg flag. Remap mods write this key back as JSON.
+- Mods use their own namespaced keys (`hw.<name>`) — see `HWLibs.settings`.

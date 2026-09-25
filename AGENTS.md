@@ -133,6 +133,6 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
   UI-free and are polled for at startup. Break-limit factor 0.05–1e9 (paper ↔ god).
   Heal button intentionally absent: limb regrow isn't feasible (destroyed Box2D joints;
   direct character.reset()/create() leak bodies).
-- Settings storage (DevTools → Application → Local Storage): key `option135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target.
+- Settings storage (DevTools → Application → Local Storage): key `options135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target. Snoop session 2026-09-25 yielded many new levers — see docs/game-internals.md (hwNative IPC surface incl. `downloads` level storage API, session.fpsText direct handle, contact-listener Maps, level actionsVector, endBlock finish line).
 - Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — cheat-menu's panel is the UI proof-of-concept.
 - CDP debugger-holder mystery: something attaches to the game page at startup and blocks `wc.debugger` (see loader/AGENTS.md).
