@@ -11,7 +11,8 @@
  * removeSecondFocus() is called on enable so the single-focus path runs.
  *
  * Controls while enabled:
- *   Arrow keys      pan (50%/s of visible width; Shift = 4x)
+ *   W/A/S/D         pan (50%/s of visible width; Shift = 4x) — NOT arrows, because
+ *                   arrow keys are the game's default drive keys (see options135)
  *   Mouse wheel     zoom (clamped 0.25–4)
  *   F               toggle off (camera snaps back to the character)
  */
@@ -113,7 +114,7 @@
                 if (!state.enabled) { if (!enable()) return; } else disable();
                 return;
             }
-            if (state.enabled && (e.key.startsWith('Arrow') || e.key === 'Shift')) {
+            if (state.enabled && /^[wasd]$/i.test(e.key) || state.enabled && e.key === 'Shift') {
                 state.keys.add(e.key);
                 e.preventDefault();
             }
@@ -144,10 +145,10 @@
                 const step = visibleWorld * 0.5 * dt;
                 if (state.keys.size) {
                     let dx = 0, dy = 0;
-                    if (state.keys.has('ArrowLeft')) dx -= 1;
-                    if (state.keys.has('ArrowRight')) dx += 1;
-                    if (state.keys.has('ArrowUp')) dy -= 1;
-                    if (state.keys.has('ArrowDown')) dy += 1;
+                    if (state.keys.has('a')) dx -= 1;
+                    if (state.keys.has('d')) dx += 1;
+                    if (state.keys.has('w')) dy -= 1;
+                    if (state.keys.has('s')) dy += 1;
                     if (state.keys.has('Shift')) { dx *= 4; dy *= 4; }
                     state.pos.x += dx * step;
                     state.pos.y += dy * step;

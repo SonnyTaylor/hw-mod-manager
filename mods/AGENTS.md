@@ -49,6 +49,14 @@ Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it v
   working by user (2026-09-25). Menus are authored for 900x500 and look broken at
   extreme aspects, so the engine auto-reverts to 16:9 in menus (silent, not persisted)
   and re-applies the chosen preset when a level session starts (per-tick check).
+- `freecam-mod` — free camera: hotkey **F**, pan **W/A/S/D** (50%/s of visible width,
+  Shift = 4x; NOT arrows — arrows are the game's default drive keys per options135),
+  wheel zoom 0.25–4. Mechanism: replaces `camera._focus` with a proxy fake whose
+  GetInterpolatedPosition() returns the pan position (decoded from cam.step()/center());
+  removeSecondFocus() on enable; restore on disable. Verified by user.
+- `hud-mod` — corner readout (fps/bodies/flags), in-level only; SUPPRESSES the game's own
+  FPS counter while enabled: direct handle `session.fpsText` on session change + periodic
+  scan (`renderable=false+visible=false`, re-asserted; restored when HUD disabled).
 - `time-mod` — physics time factor via `window.timeScale` (set/get/normal; 0.05–∞,
   presets in cheat menu). Scales `session.m_timeStep` against a per-session baseline,
   re-applied per tick. In-level verification pending.

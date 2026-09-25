@@ -92,8 +92,20 @@
             } catch (e) {}
         }
 
+        let lastSes = null;
         HW.onTick(function (t) {
             try {
+                // direct handle: suppress the new session's counter the instant it
+                // appears (kills the spawn-race window; scan below stays as fallback)
+                const ses = game.session();
+                if (ses && ses !== lastSes) {
+                    lastSes = ses;
+                    if (enabled) {
+                        try {
+                            if (ses.fpsText) { ses.fpsText.visible = false; ses.fpsText.renderable = false; suppressed.add(ses.fpsText); }
+                        } catch (e) {}
+                    }
+                }
                 // fps: smooth rAF rate
                 frames++;
                 const now = performance.now();
