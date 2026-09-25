@@ -225,6 +225,22 @@ arrays, `rebuildRows/rebindRows/bindAll`, `updateIndicators`, `lastKnown: Map`.
 reference in the tree — persistence stays with the localStorage key (see above);
 a remap mod can ignore this page and read/write `options135` directly.
 
+### Level editor (snooped 2026-09-25 — partial)
+
+- Opening the editor is a **same-page deep link**: `location.href` becomes
+  `.../__hw_app__/index.html?level_id=1` (query param selects the level being edited).
+  `?level_id=N` is the URL pattern — deep links (`hwNative.deepLink`,
+  `happyWheels.openDeepLink`) can target editor/levels programmatically.
+- No `did-finish-load` re-fire observed (URL likely changed via history API — SPA style);
+  our runtime + mods stay alive and the captured app remains valid (canvas identity
+  unchanged).
+- The editor scene lives under the same screen (`TempGameScene`, ~120 stage nodes,
+  checkbox-style chrome: `box/check/dash`, `closeButton`s). The heavy editor logic
+  wasn't found via fn-name hunting — needs a dedicated session (probe `openEditor()`
+  callers, look for undo/toolbox objects once the editor canvas is active).
+- Editor session: `sessionController.session` is null while editor is open; level
+  testing presumably goes through the session path with `isEditorTest: true`.
+
 ### happyWheels screen (o4) — screen-level machinery
 
 `enterSession`, `loadLevelByID`, `loadReplayByID`, `openEditor`/`closeEditor`,
