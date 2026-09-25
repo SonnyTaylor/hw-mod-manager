@@ -48,19 +48,22 @@
 
         function inLevel() { return game.inLevel(); }
 
-        /** Screen (CSS px) → world meters via the camera container. */
+        /** Screen (CSS px) → world meters via the camera container's raw PIXI sprite.
+         *  (cont.localToGlobal needs the game's own point-wrapper class — sealed in the
+         *  bundle — but cont._pixiSprite.toLocal is plain PIXI and works with {x,y}.) */
         function screenToWorld(clientX, clientY) {
             const cam = game.camera();
             const app = window.__HW__.getApp();
             const cont = cam && cam._containerObj;
-            if (!cont || typeof cont.globalToLocal !== 'function') return null;
+            const sprite = cont && cont._pixiSprite;
+            if (!sprite || typeof sprite.toLocal !== 'function') return null;
             const view = (app.renderer && app.renderer.view) || document.querySelector('canvas');
             const rect = view.getBoundingClientRect();
             const ratio = rect.width / (app.w || 900);   // css px per logical px
-            const pt = { x: (clientX - rect.left) / ratio, y: (clientY - rect.top) / ratio };
-            const local = cont.globalToLocal(pt);       // logical container units
+            const logical = { x: (clientX - rect.left) / ratio, y: (clientY - rect.top) / ratio };
+            const localPx = sprite.toLocal(logical);     // container-space px
             const ps = cam.m_physScale || 62.5;
-            return { x: local.x / ps, y: local.y / ps };
+            return { x: localPx.x / ps, y: localPx.y / ps }; // world meters
         }
 
         function pickBody(world) {
