@@ -118,6 +118,27 @@ Plus `lostLimbs` (Set), `bleedCounter`, handlers (`keyDownHandler`, `contactAddH
 
 `zoom`, `midX/midY`, borders/limits, `_focus`, `_steppedFocus`, `_containerObj`, `m_physScale`.
 
+### Viewport / resolution (app-level, decoded from live `app.resize()` source)
+
+- `app.safeSize` and `app.maxSize` (both `{width:900, height:500}`) are THE levers: the
+  game's own `app.resize()` reads them, calls `renderer.resize()` at that logical size
+  (× DPR/FILTER_RES) and letterboxes the canvas CSS to the window, centering it.
+- To change aspect: set BOTH `app.safeSize` and `app.maxSize` to `{width,height}` (logical,
+  base width 900), then call `app.resize()` + `app.updatePixiResolution()`. Verified live
+  (900×386 = 21:9). `updatePixiResolution()` recomputes the game's global FILTER_RES
+  (renderer/interaction resolution) from screen height — call it after resize.
+- `app.w`/`app.h` mirror the logical size after resize; `renderer.view.style` holds the
+  canvas CSS (width/height/left/top). `app.screen` is undefined (non-standard PIXI use).
+- UI elements reflow via the game's screen resize handlers; extreme aspects may look odd.
+- Implemented in `viewport-mod` (`window.viewport`: 16:9 / 21:9 / 1:1 / 9:16 / fill).
+
+### Physics time control
+
+- `session.m_timeStep` (1/30) is the fixed physics step; multiplying it slows/speeds the
+  world while rendering stays full-fps. Re-apply per tick (session recreated on level
+  load/restart); base captured per session instance. Implemented in `time-mod`
+  (`window.timeScale`). In-level verification pending.
+
 ## UI overlay pattern (proven by gravity-ui)
 
 - Plain DOM element on `document.body`, `position:fixed; z-index:99999` — sits above the canvas.

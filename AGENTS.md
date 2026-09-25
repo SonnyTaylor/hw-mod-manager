@@ -124,9 +124,15 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
   sections, sliders/buttons/toggle-switches, accent colors). Detailed internals now live in
   `docs/game-internals.md`.
 - Gravity mod **verified working in-level** (moon/jupiter tested, screenshot 2026-09-25).
-- **Cheat menu** (`mods/cheat-menu`): combined cheat panel superseding `gravity-ui` (removed)
-  — collapsible Gravity + Character sections; engines stay UI-free (`window.gravity`,
-  `window.charEd`, hotkey I = god toggle). Break-limit factor 0.05–1e9 (paper ↔ god).
+- **Viewport control** (`viewport-mod`): aspect presets via the game's own layout path
+  (`app.safeSize`/`maxSize` + `app.resize()`) — verified working by user (2026-09-25).
+- **Time control** (`time-mod`): physics slow-mo/fast via `session.m_timeStep` — built,
+  injected OK; in-level verification pending.
+- **Cheat menu** (`mods/cheat-menu`): combined cheat panel superseding `gravity-ui`
+  (removed) — collapsible sections Gravity / Character / Viewport / Time; engines stay
+  UI-free and are polled for at startup. Break-limit factor 0.05–1e9 (paper ↔ god).
+  Heal button intentionally absent: limb regrow isn't feasible (destroyed Box2D joints;
+  direct character.reset()/create() leak bodies).
 - Settings storage (DevTools → Application → Local Storage): key `option135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target.
 - Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — cheat-menu's panel is the UI proof-of-concept.
 - CDP debugger-holder mystery: something attaches to the game page at startup and blocks `wc.debugger` (see loader/AGENTS.md).

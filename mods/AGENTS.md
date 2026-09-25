@@ -36,9 +36,20 @@ Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it v
 
 - `devtools` — exposes `window.devTools` inspector helpers (stage walk, screenshot).
 - `gravity-mod` — `window.gravity` API (set/moon/mars/jupiter/zeroG/reset/get). Verified in-level.
-- `cheat-menu` — combined cheat panel (supersedes gravity-ui, which was removed): collapsible
-  sections Gravity + Character, drives `window.gravity` + `window.charEd`. Verified in-level.
-  UI plumbing is all in `HWLibs.ui` — see its header for the section-scoped API.
+- `viewport-mod` — logical resolution/aspect presets via `window.viewport`
+  (16:9 / 21:9 / 1:1 / 9:16 portrait / fill-window, persisted, re-applies 'fill' on window
+  resize). Drives the game's OWN layout path (`app.safeSize`+`app.maxSize` →
+  `app.resize()` + `updatePixiResolution()`) — see docs/game-internals.md. Verified
+  working by user (2026-09-25).
+- `time-mod` — physics time factor via `window.timeScale` (set/get/normal; 0.05–∞,
+  presets in cheat menu). Scales `session.m_timeStep` against a per-session baseline,
+  re-applied per tick. In-level verification pending.
+- `cheat-menu` — combined cheat panel (supersedes gravity-ui, which was removed):
+  collapsible sections Gravity + Character + Viewport + Time; consumes engine console
+  APIs (`window.gravity`, `window.charEd`, `window.viewport`, `window.timeScale`) and
+  polls for them at startup because fs-order injection doesn't guarantee engines load
+  first — add new engines to that poll. UI plumbing is all in `HWLibs.ui` — see its
+  header for the section-scoped API.
 - `character-editor` — break-limit multiplier (Normal/Tough/Iron/GOD presets + slider,
   0.05–1e9 = paper ↔ god), hotkey **I** = god toggle, Stop bleed (bleedCounter reset).
   Console API `window.charEd` (setFactor/getFactor/heal/respawn/info) — `respawn()` is

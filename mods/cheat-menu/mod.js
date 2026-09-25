@@ -9,9 +9,13 @@
  *               (No limb regrow: dismemberment destroys Box2D joints; the only
  *               game-native rebuild is a full level restart — charEd.respawn().)
  *
- * Consumes the engine mods (gravity-mod, character-editor). Injection order is
- * fs order, so engines may not exist yet when this mod's onReady fires — we
- * poll for window.gravity/window.charEd for up to 15s before building.
+ *   Viewport — logical resolution presets (16:9 / 21:9 / 1:1 / 9:16 / Fill window)
+ *               via window.viewport.
+ *   Time     — physics speed slider (0.05 slow-mo … 2 fast) + presets via window.timeScale.
+ *
+ * Consumes the engine mods (gravity-mod, character-editor, viewport-mod, time-mod).
+ * Injection order is fs order, so engines may not exist yet when this mod's onReady
+ * fires — we poll for all engine globals for up to 15s.
  *
  * Adding a section: engine mod exposes a console API on window, then add a
  * panel.addSection + controls here. Keep engines UI-free.
@@ -30,12 +34,12 @@
         // engines may inject after us — poll briefly
         let tries = 0;
         (function wait() {
-            if (window.gravity && window.charEd) {
+            if (window.gravity && window.charEd && window.viewport && window.timeScale) {
                 try { build(); } catch (e) { HW.log('Cheat Menu', 'build failed:', e.message); }
                 return;
             }
             if (++tries > 60) {
-                HW.log('Cheat Menu', 'engines not found — install gravity-mod + character-editor');
+                HW.log('Cheat Menu', 'engines not found — install gravity-mod + character-editor + viewport-mod + time-mod');
                 return;
             }
             setTimeout(wait, 250);
@@ -81,6 +85,30 @@
             cSec.addButtons([{ label: 'Stop bleed', value: 'bleed' }],
                 () => { ed.heal(); });
 
+            // ---- Viewport --------------------------------------------------
+            const vSec = panel.addSection('Viewport');
+            vSec.addButtons([
+                { label: '16:9', value: '16:9', accent: 'blue' },
+                { label: '21:9', value: '21:9' },
+                { label: '1:1', value: '1:1' },
+                { label: '9:16', value: '9:16' },
+                { label: 'Fill', value: 'fill' }
+            ], (v) => { window.viewport.apply(v); sync(); });
+
+            // ---- Time ------------------------------------------------------
+            const tSec = panel.addSection('Time');
+            const tSlider = tSec.addSlider({
+                min: 0.05, max: 2, step: 0.05, value: ts.get(),
+                onInput: (v) => { ts.set(v); sync(); }
+            });
+            tSec.addButtons([
+                { label: '0.1x', value: 0.1 },
+                { label: 'Slow', value: 0.25 },
+                { label: 'Half', value: 0.5 },
+                { label: '1x', value: 1 },
+                { label: '2x', value: 2 }
+            ], (v) => { ts.set(v); sync(); });
+
             function clampFactor(f) {
                 return Math.max(0.1, Math.min(50, f >= GOD ? 50 : f));
             }
@@ -91,8 +119,11 @@
                 if (gm != null) gSlider.set(Math.max(0, Math.min(3, gm)));
                 const f = ed.getFactor();
                 cSlider.set(clampFactor(f));
+                const tf = ts.get();
+                tSlider.set(Math.max(0.05, Math.min(2, tf)));
                 panel.setValue('G ' + (gm != null ? gm.toFixed(2) + '×' : '?') +
-                    ' · C ' + (f >= GOD ? 'GOD' : parseFloat(f.toFixed(2)) + '×'));
+                    ' · C ' + (f >= GOD ? 'GOD' : parseFloat(f.toFixed(2)) + '×') +
+                    ' · T ' + parseFloat(tf.toFixed(2)) + '×');
             }
 
             let poll = setInterval(sync, 500);

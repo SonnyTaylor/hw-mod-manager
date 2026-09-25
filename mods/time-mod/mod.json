@@ -1,0 +1,8 @@
+{
+    "name": "time-mod",
+    "version": "0.1.0",
+    "description": "Physics time control: slow-motion / fast-forward via session.m_timeStep",
+    "author": "",
+    "tags": ["cheats", "physics"],
+    "requires": ["game", "settings"]
+}
