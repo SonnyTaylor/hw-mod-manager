@@ -1,12 +1,17 @@
 /**
- * Character Editor — break-limit multiplier + bleed heal.
+ * Character Editor (engine) — break-limit multiplier + bleed heal.
+ * UI panel lives in the cheat-menu mod; this mod exposes the API and keeps
+ * limits applied every tick.
  *
  * Console API (window.charEd):
  *   charEd.setFactor(n)  multiplier on all break/ligament limits
- *                        (1 = normal, 3 = tough, 1e9 = effectively god mode)
+ *                        (0.05–0.5 = fragile, 1 = normal, 3 = tough,
+ *                         1e9 = effectively god mode)
  *   charEd.getFactor()
  *   charEd.heal()        reset bleedCounter to 0
  *   charEd.info()        discovered limit keys + {base, current} per key
+ *
+ * Hotkey: I — toggles between 1x and the remembered "god" factor (default 1e9).
  *
  * Internals used (verified, see docs/game-internals.md):
  *   character (class ij): neckBreakLimit, spineLimit, torsoBreakLimit,
@@ -14,19 +19,16 @@
  *   bleedCounter, lostLimbs (Set)
  *
  * Approach: limit keys are DISCOVERED per character instance (own props
- * matching /Limit$/) — never hard-coded, so extra joints (wrists etc.) are
- * covered automatically. A baseline is captured once per character object;
- * limits are re-applied every frame as baseline × factor, which covers
- * respawns and any game-side limit resets. Limb restoration (lostLimbs) is
- * deliberately NOT attempted — clearing the Set does not rebuild destroyed
- * Box2D bodies/joints.
+ * matching /Limit$/) — never hard-coded, 20 keys found live so far. A baseline
+ * is captured once per character object; limits are re-applied every frame as
+ * baseline × factor, which covers respawns and any game-side limit resets.
+ * Limb restoration (lostLimbs) is deliberately NOT attempted — clearing the
+ * Set does not rebuild destroyed Box2D bodies/joints.
  */
 (function () {
     'use strict';
 
     const HW = window.__HW__;
-    const NS = 'character-editor';
-    const GOD = 1e9;
 
     HW.onReady(function () {
         if (!(window.HWLibs && HWLibs.game && HWLibs.settings)) {
@@ -35,10 +37,12 @@
         }
         const game = HWLibs.game;
         const settings = HWLibs.settings;
+        const NS = 'character-editor';
+        const GOD = 1e9;
 
         const state = {
             factor: settings.get(NS, 'factor', 1),
-            hotFactor: settings.get(NS, 'hotFactor', GOD), // what the I hotkey restores to
+            hotFactor: settings.get(NS, 'hotFactor', GOD), // what the I hotkey toggles to
             base: null,      // { key: baselineValue } for the current character
             keys: null,      // discovered limit keys
             lastChar: null,
@@ -48,14 +52,14 @@
         // --- discovery + application -------------------------------------
 
         function discoverKeys(char) {
-            const keys = Object.getOwnPropertyNames(char).filter(k => /Limit/.test(k) && typeof char[k] === 'number');
-            return keys.length ? keys : null;
+            return Object.getOwnPropertyNames(char)
+                .filter(k => /Limit/.test(k) && typeof char[k] === 'number');
         }
 
         function captureBase(char) {
             state.keys = discoverKeys(char);
             state.base = {};
-            if (state.keys) for (const k of state.keys) state.base[k] = char[k];
+            for (const k of state.keys) state.base[k] = char[k];
         }
 
         function apply(char) {
@@ -66,11 +70,10 @@
         }
 
         function setFactor(v, opts) {
-            state.factor = v >= GOD ? GOD : Math.max(1, Number(v) || 1);
+            state.factor = v >= GOD ? GOD : Math.max(0.05, +v || 1);
             settings.set(NS, 'factor', state.factor);
             const c = game.character();
             if (c) apply(c);
-            syncPanel();
             if (!opts || !opts.silent) HW.log('Character Editor', 'break limits ×' + fmtFactor());
             return state.factor;
         }
@@ -80,7 +83,6 @@
             if (!c) return false;
             try {
                 if (typeof c.bleedCounter === 'number') c.bleedCounter = 0;
-                if (c.bleedCounter && typeof c.bleedCounter.set === 'function') c.bleedCounter.set(0);
                 HW.log('Character Editor', 'bleed reset');
                 return true;
             } catch (e) {
@@ -90,7 +92,7 @@
         }
 
         function fmtFactor() {
-            return state.factor >= GOD ? 'GOD (∞)' : state.factor.toFixed(1).replace(/\.0$/, '') + 'x';
+            return state.factor >= GOD ? 'GOD (∞)' : parseFloat(state.factor.toFixed(2)) + 'x';
         }
 
         function info() {
@@ -130,34 +132,6 @@
             if (!goingGod) settings.set(NS, 'hotFactor', state.hotFactor); // remember next god level
         });
 
-        // --- panel ---------------------------------------------------------
-
-        let panel = null, slider = null;
-        try {
-            if (!(window.HWLibs && HWLibs.ui)) throw new Error('HWLibs.ui missing');
-            panel = HWLibs.ui.panel({ title: 'Character', storageKey: 'char-ed' });
-            slider = panel.addSlider({
-                min: 1, max: 50, step: 0.5, value: state.factor,
-                onInput: (v) => setFactor(v, { silent: true })
-            });
-            panel.addButtons([
-                { label: 'Normal', value: 1 },
-                { label: 'Tough', value: 3 },
-                { label: 'Iron', value: 10 }
-            ], (v) => { slider.set(v, true); });
-            panel.addButtons([{ label: 'GOD', value: GOD }], (v) => { slider.set(50, true); setFactor(v); });
-            panel.addButtons([{ label: 'Heal', value: 'heal' }], () => heal());
-            syncPanel();
-        } catch (e) {
-            HW.log('Character Editor', 'panel failed (mod still active):', e.message);
-        }
-
-        function syncPanel() {
-            if (!panel) return;
-            panel.setValue(fmtFactor());
-            if (slider && state.factor <= 50) slider.set(state.factor);
-        }
-
-        HW.log('Character Editor', 'ready — hotkey I = god toggle, window.charEd for console');
+        HW.log('Character Editor', 'engine ready — window.charEd (UI: cheat-menu mod)');
     });
 })();

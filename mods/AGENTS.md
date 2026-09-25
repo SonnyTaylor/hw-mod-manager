@@ -36,7 +36,9 @@ Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it v
 
 - `devtools` — exposes `window.devTools` inspector helpers (stage walk, screenshot).
 - `gravity-mod` — `window.gravity` API (set/moon/mars/jupiter/zeroG/reset/get). Verified in-level.
-- `gravity-ui` — draggable on-screen slider + presets, drives `window.gravity`. Verified in-level.
+- `cheat-menu` — combined cheat panel (supersedes gravity-ui, which was removed): collapsible
+  sections Gravity + Character, drives `window.gravity` + `window.charEd`. Verified in-level.
+  UI plumbing is all in `HWLibs.ui` — see its header for the section-scoped API.
 - `character-editor` — break-limit multiplier (Normal/Tough/Iron/GOD presets + slider),
   hotkey **I** = god toggle, Heal (bleedCounter reset). Console API `window.charEd`
   (setFactor/getFactor/heal/info). Limits are DISCOVERED per character instance (own

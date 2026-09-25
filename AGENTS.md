@@ -120,9 +120,13 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
 - **Linux (native build, appid 4705510): verified working** (2026-09-25) — fuse flip on `happy-wheels-bin`, patched asar boots, runtime + `_lib` injected, eval bridge confirmed `__HW__.ready === true` with the app captured (obf. class `D4`). Game must be launched through Steam; a network outage stalls the page before `did-finish-load` (no mod-host log) — retry when connectivity is stable.
 - **Mod library: DONE (v1)** — loader loads `mods/_lib/*.js` before mods into `window.HWLibs`;
   mod.json `"requires"` gates injection. Libs: `game` (graph accessors + gravity helpers),
-  `settings` (namespaced localStorage), `ui` (panel factory). Detailed internals now live in
+  `settings` (namespaced localStorage), `ui` (panel factory: drag/collapse/persist, collapsible
+  sections, sliders/buttons/toggle-switches, accent colors). Detailed internals now live in
   `docs/game-internals.md`.
-- Gravity mod + gravity UI **verified working in-level** (moon/jupiter tested, screenshot 2026-09-25).
+- Gravity mod **verified working in-level** (moon/jupiter tested, screenshot 2026-09-25).
+- **Cheat menu** (`mods/cheat-menu`): combined cheat panel superseding `gravity-ui` (removed)
+  — collapsible Gravity + Character sections; engines stay UI-free (`window.gravity`,
+  `window.charEd`, hotkey I = god toggle). Break-limit factor 0.05–1e9 (paper ↔ god).
 - Settings storage (DevTools → Application → Local Storage): key `option135` holds JSON with keyCodes, gamepadBindings, bloodSetting, use60FPS — future mod API target.
-- Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — gravity-ui's panel is the UI proof-of-concept.
+- Mod manager GUI (in-game overlay listing/enabling/disabling installed mods) not started — cheat-menu's panel is the UI proof-of-concept.
 - CDP debugger-holder mystery: something attaches to the game page at startup and blocks `wc.debugger` (see loader/AGENTS.md).
