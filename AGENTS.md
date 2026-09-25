@@ -84,7 +84,10 @@ mods, and libs are platform-neutral.
 | Path | Purpose |
 |------|---------|
 | `app/` | Desktop mod manager (Tauri 2: Rust backend `src-tauri/`, Svelte 5 frontend `src/`). Scans/toggles mods, settings UI, hot channel writer, game launcher. |
-| `tools/patch-game.js` | Patcher: exe backup + fuse flip, asar backup/extract/patch/pack, restore, status. Idempotent. |
+| `tools/patch-game.js` | Node CLI patcher (same steps as the Rust one; kept for CLI flows). |
+| `app/src-tauri/src/patcher.rs` | Rust patcher (manager): fuse flip + asar backup/extract/patch/pack/restore, mod-host.js embedded. |
+| `app/src-tauri/src/asar.rs` | asar format port: read/extract/pack, per-file integrity, unpack rule. |
+| `app/src-tauri/src/fuses.rs` | Electron fuse wire read/flip (sentinel byte-scan). |
 | `tools/platform.js` | Shared platform/install detection: boot-binary name per OS, Steam paths (incl. Flatpak), appid, `detectGamePath()`. |
 | `tools/hw.js` | Dev CLI (`hw dev` is the main loop). |
 | `loader/mod-host.js` | Main-process mod host (copied into asar at `electron/out/`). |
@@ -132,9 +135,9 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
 ## Known Issues / TODO
 
 - **Desktop manager: UI shell + core working (v0.1)** — Tauri 2 app in `app/` (bun, Svelte 5 + Tailwind v4): game detection with status chips, mod list with mechanical toggle switches, schema-driven settings panels, LAUNCH via Steam, mods-folder opener. **Hot-toggle + hot-settings verified end-to-end** (2026-09-25): manager → state.json + `.hw-commands.jsonl` → mod-host executes in page (log shows `Hot-disabled/-enabled`, `Settings applied`); re-injection replaces list entries without duplication. All 9 mods now hot-toggleable with teardowns (gravity/character/viewport/time/hud/freecam/physgun/cheat-menu/devtools).
-- **Rust patcher port: NOT STARTED** — manager can't yet patch/fuse-flip/repack the game itself; status shows backups-based patch detection. Until then a fresh install needs one `node tools/hw.js dev` run.
+- **Rust patcher: DONE (2026-09-25)** — `app/src-tauri/src/` has `fuses.rs` (byte-level @electron/fuses port, verified: `npx @electron/fuses read` agrees) and `asar.rs` (byte-level @electron/asar extract/pack with per-file SHA256 integrity + `node_modules/steamworks.js` unpack rule; roundtrip test against the real archive passes) plus `patcher.rs` orchestration (same steps as tools/patch-game.js; mod-host.js embedded via `include_str!`). **Live-verified**: restore → Rust patch → launch → all 9 mods injected. The manager is now standalone; tests: `cargo test` (asar roundtrip) / `HW_TEST_LIVE_PATCH=1 cargo test live_patch -- --nocapture` (patches real install). Node patcher remains for CLI flows.
 - **Marketplace: NOT STARTED** — planned as community git repo hosting `index.json` (metadata + zip URLs); manager tab is a placeholder describing the pipeline. Creator flow = template + PR.
-- **Manager PATCH status dot** — was showing warn despite both backups present on Linux; verify `GameInfo` detection on next manager run (re-check `binary_patched`/`asar_patched` paths).
+- **Creator/mod templates** — `hw new` scaffolding should gain hotToggle + settings-schema examples (see mods/AGENTS.md contract).
 - Mod manager GUI — **replaced by the desktop manager (`app/`)**; cheat-menu's panel remains the in-game UI.
 - **Linux (native build, appid 4705510): verified working** (2026-09-25) — fuse flip on `happy-wheels-bin`, patched asar boots, runtime + `_lib` injected, eval bridge confirmed `__HW__.ready === true` with the app captured (obf. class `D4`). Game must be launched through Steam; a network outage stalls the page before `did-finish-load` (no mod-host log) — retry when connectivity is stable.
 - **Mod library: DONE (v1)** — loader loads `mods/_lib/*.js` before mods into `window.HWLibs`;

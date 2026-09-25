@@ -20,6 +20,7 @@ export interface GameInfo {
   found: boolean;
   asarPatched: boolean;
   binaryPatched: boolean;
+  patchState: boolean;
   modsDir: string;
 }
 
@@ -46,4 +47,6 @@ export const api = {
   launch: () => invoke<void>('launch_game'),
   openModsDir: () => invoke<void>('open_mods_dir'),
   tailHostLog: (lines: number) => invoke<string[]>('tail_host_log', { lines }),
+  patchGame: () => invoke<string[]>('patch_game'),
+  restoreGame: () => invoke<string[]>('restore_game'),
 };

@@ -92,9 +92,22 @@
   const patchStatus = $derived.by(() => {
     if (!game) return null;
     if (!game.found) return 'missing';
-    if (game.asarPatched && game.binaryPatched) return 'patched';
+    if (game.patchState || (game.asarPatched && game.binaryPatched)) return 'patched';
     return 'unpatched';
   });
+
+  async function patchGame() {
+    busy = 'patching…';
+    try {
+      const steps = await api.patchGame();
+      await refresh();
+      void say('ok', `Patched — ${steps.join(' / ')}`);
+    } catch (e) {
+      void say('bad', String(e));
+    } finally {
+      busy = '';
+    }
+  }
 </script>
 
 <div class="flex flex-col h-screen select-none">
@@ -264,7 +277,14 @@
               </div>
               <div class="flex items-center gap-2.5">
                 <span class="dot {patchStatus === 'patched' ? 'dot-ok' : patchStatus === 'missing' ? 'dot-bad' : 'dot-warn'}"></span>
-                <span>Mod host patch {patchStatus === 'patched' ? 'applied' : patchStatus === 'missing' ? 'unknown' : 'not applied — run `node tools/hw.js dev` once'}</span>
+                <span>
+                  Mod host patch {patchStatus === 'patched' ? 'applied' : patchStatus === 'missing' ? 'unknown' : 'not applied'}
+                </span>
+                {#if patchStatus === 'unpatched'}
+                  <button type="button" class="btn-ghost text-hazard border-hazard" onclick={patchGame} disabled={busy !== ''}>
+                    PATCH GAME
+                  </button>
+                {/if}
               </div>
               <div class="flex items-center gap-2.5">
                 <span class="dot {mods.length ? 'dot-ok' : 'dot-warn'}"></span>

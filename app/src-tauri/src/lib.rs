@@ -1,8 +1,11 @@
 // HW Mod Manager — desktop app (Tauri 2). See ../README.md and root AGENTS.md.
 
+mod asar;
 mod config;
+mod fuses;
 mod game;
 mod mods;
+mod patcher;
 
 use config::Config;
 use tauri::AppHandle;
@@ -10,6 +13,18 @@ use tauri::AppHandle;
 #[tauri::command]
 fn get_game_info(app: AppHandle) -> game::GameInfo {
     game::info(&app)
+}
+
+#[tauri::command]
+fn patch_game(app: AppHandle) -> Result<Vec<String>, String> {
+    let p = patcher::Patcher::new(game::resolve(&app).root);
+    p.patch()
+}
+
+#[tauri::command]
+fn restore_game(app: AppHandle) -> Result<Vec<String>, String> {
+    let p = patcher::Patcher::new(game::resolve(&app).root);
+    p.restore()
 }
 
 #[tauri::command]
@@ -73,7 +88,9 @@ pub fn run() {
             set_mod_settings,
             launch_game,
             open_mods_dir,
-            tail_host_log
+            tail_host_log,
+            patch_game,
+            restore_game
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

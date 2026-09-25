@@ -16,6 +16,10 @@ pub const EXE_NAME: &str = "Happy Wheels.exe";
 #[cfg(not(target_os = "windows"))]
 pub const EXE_NAME: &str = "happy-wheels-bin";
 
+pub fn exe_name() -> &'static str {
+    EXE_NAME
+}
+
 fn steam_tail() -> PathBuf {
     PathBuf::from("steamapps").join("common").join("Happy Wheels")
 }
@@ -72,16 +76,20 @@ pub struct GameInfo {
     pub asar_patched: bool,
     /// <boot binary>.original exists → fuse was flipped.
     pub binary_patched: bool,
+    /// .hw-mod-state.json says patched (written by the manager's patcher).
+    pub patch_state: bool,
     pub mods_dir: String,
 }
 
 pub fn info(app: &AppHandle) -> GameInfo {
     let g = resolve(app);
+    let patcher = crate::patcher::Patcher::new(g.root.clone());
     GameInfo {
         path: g.root.display().to_string(),
         found: g.root.join(EXE_NAME).exists(),
         asar_patched: g.root.join("app.asar.original").exists(),
         binary_patched: g.root.join(format!("{EXE_NAME}.original")).exists(),
+        patch_state: patcher.is_patched(),
         mods_dir: g.mods_dir.display().to_string(),
     }
 }
