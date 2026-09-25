@@ -5,8 +5,10 @@
  * Mechanism: velocity-PD telekinesis instead of a b2MouseJoint — the Box2D joint
  * def classes are hidden inside the obfuscated bundle (no global Box2D), but
  * body.SetLinearVelocity/SetAwake/GetPosition are verified API (docs/game-internals.md).
- * Each tick: v = (cursorWorld - bodyPos) * GAIN, clamped; body keeps its velocity on
- * release, so letting go mid-swing flings naturally.
+ * Each tick: v = (cursorWorld - bodyPos) * GAIN * strength, clamped to MAXV * strength;
+ * body keeps its velocity on release, so letting go mid-swing flings naturally.
+ * Strength slider (window.physgun.setStrength, 0.25–5) scales both — heavy objects
+ * need more gain to overcome ground friction.
  *
  * Controls while armed:
  *   Left mouse down   grab the nearest dynamic body under the cursor
@@ -38,13 +40,16 @@
 
         const state = {
             armed: settings.get(NS, 'armed', false),
+            strength: Math.max(0.25, Math.min(5, settings.get(NS, 'strength', 1))),
             grabbed: null,
             target: { x: 0, y: 0 },
             errored: false
         };
 
-        const GAIN = 12;    // velocity gain per meter of error
-        const MAXV = 30;    // m/s cap (~2 screens/s at 1x zoom)
+        const BASE_GAIN = 12;   // velocity gain per meter of error
+        const BASE_MAXV = 30;   // m/s cap (~2 screens/s at 1x zoom)
+        function gain() { return BASE_GAIN * state.strength; }
+        function maxV() { return BASE_MAXV * state.strength; }
 
         function inLevel() { return game.inLevel(); }
 
@@ -160,10 +165,11 @@
                 let p;
                 try { p = b.GetPosition(); } catch (e) { release(true); return; }
                 if (!p || !isFinite(p.x) || !isFinite(p.y)) { release(true); return; }
-                let vx = (state.target.x - p.x) * GAIN;
-                let vy = (state.target.y - p.y) * GAIN;
+                let vx = (state.target.x - p.x) * gain();
+                let vy = (state.target.y - p.y) * gain();
                 const sp = Math.hypot(vx, vy);
-                if (sp > MAXV) { vx *= MAXV / sp; vy *= MAXV / sp; }
+                const cap = maxV();
+                if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
                 b.SetLinearVelocity({ x: vx, y: vy });
                 if (typeof b.SetAwake === 'function') b.SetAwake(true);
             } catch (e) {
@@ -175,7 +181,14 @@
             toggle() { setArmed(!state.armed); return state.armed; },
             on() { setArmed(true); },
             off() { setArmed(false); },
-            get armed() { return state.armed; }
+            get armed() { return state.armed; },
+            get strength() { return state.strength; },
+            setStrength(v) {
+                state.strength = Math.max(0.25, Math.min(5, +v || 1));
+                settings.set(NS, 'strength', state.strength);
+                HW.log('PhysGun', 'strength ×' + parseFloat(state.strength.toFixed(2)));
+                return state.strength;
+            }
         };
 
         HW.log('PhysGun', 'engine ready — G to arm, window.physgun');

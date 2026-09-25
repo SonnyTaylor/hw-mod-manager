@@ -132,6 +132,10 @@
                 label: 'Physics gun (G)', value: pg.armed,
                 onChange: (b) => { b ? pg.on() : pg.off(); sync(); }
             });
+            const gunSlider = gunSec.addSlider({
+                label: 'Strength', min: 0.5, max: 5, step: 0.25, value: pg.strength,
+                onInput: (v) => { pg.setStrength(v); sync(); }
+            });
 
             function clampFactor(f) {
                 return Math.max(0.1, Math.min(50, f >= GOD ? 50 : f));
@@ -148,6 +152,7 @@
                 camToggle.set(fc.enabled);
                 hudToggle.set(hud.enabled);
                 gunToggle.set(pg.armed);
+                gunSlider.set(pg.strength);
                 panel.setValue('G ' + (gm != null ? gm.toFixed(2) + '×' : '?') +
                     ' · C ' + (f >= GOD ? 'GOD' : parseFloat(f.toFixed(2)) + '×') +
                     ' · T ' + parseFloat(tf.toFixed(2)) + '×');

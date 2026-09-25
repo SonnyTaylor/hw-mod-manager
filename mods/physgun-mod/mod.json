@@ -1,6 +1,6 @@
 {
     "name": "physgun-mod",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Physics gun: grab any body with the mouse (telekinesis PD control), fling on release. Hotkey G.",
     "author": "",
     "tags": ["sandbox", "physics"],
