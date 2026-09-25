@@ -46,10 +46,11 @@
         'border-radius:5px;padding:0;flex:none;transition:all .12s}',
         '.hw-panel-head button:hover{color:#fff;background:rgba(255,255,255,.14)}',
 
-        '.hw-panel-body{padding:10px;max-height:min(68vh,520px);overflow-y:auto;',
-        'scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}',
-        '.hw-panel-body::-webkit-scrollbar{width:8px}',
-        '.hw-panel-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:99px}',
+        '.hw-panel-body{padding:10px;max-height:min(78vh,680px);overflow-y:auto;',
+        'scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.3) transparent}',
+        '.hw-panel-body::-webkit-scrollbar{width:9px}',
+        '.hw-panel-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:99px}',
+        '.hw-panel-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.4)}',
         '.hw-panel.collapsed .hw-panel-body{display:none}',
         '.hw-panel.closed{display:none}',
 
