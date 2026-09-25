@@ -216,6 +216,15 @@ triggers (landing detection, collision sounds, achievements).
   `happyWheels.loadLevelByID(id)`. Server levels only — local ones go through
   `hwNative.downloads`.
 
+### Options page (snooped 2026-09-25 — low yield)
+
+The options UI is a generic virtualized list controller (reached at
+`mainMenu.children[12]/1` when open — positional, don't hard-code): `rows`/`live`
+arrays, `rebuildRows/rebindRows/bindAll`, `updateIndicators`, `lastKnown: Map`.
+`entries()` returned empty while open (lazy/virtualized). No direct `options135`
+reference in the tree — persistence stays with the localStorage key (see above);
+a remap mod can ignore this page and read/write `options135` directly.
+
 ### happyWheels screen (o4) — screen-level machinery
 
 `enterSession`, `loadLevelByID`, `loadReplayByID`, `openEditor`/`closeEditor`,
