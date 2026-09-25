@@ -37,6 +37,15 @@ Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it v
 - `devtools` — exposes `window.devTools` inspector helpers (stage walk, screenshot).
 - `gravity-mod` — `window.gravity` API (set/moon/mars/jupiter/zeroG/reset/get). Verified in-level.
 - `gravity-ui` — draggable on-screen slider + presets, drives `window.gravity`. Verified in-level.
+- `character-editor` — break-limit multiplier (Normal/Tough/Iron/GOD presets + slider),
+  hotkey **I** = god toggle, Heal (bleedCounter reset). Console API `window.charEd`
+  (setFactor/getFactor/heal/info). Limits are DISCOVERED per character instance (own
+  props matching `/Limit/`) — 20 keys found live (see docs/game-internals.md), don't
+  hard-code them. Baseline captured per character object; re-applied every tick so
+  respawns/game-side resets are covered. Verified: discovery + god-mode application
+  live (2026-09-25); full in-level dismemberment test pending. Limb restoration
+  (lostLimbs) deliberately NOT attempted — clearing the Set doesn't rebuild Box2D
+  bodies/joints.
 
 ## Mod library idea (TODO — shared code between mods)
 

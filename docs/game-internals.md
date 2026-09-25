@@ -75,10 +75,22 @@ display layers: `background`, `characterLayer`, `foreground`, `backDrops`.
 
 ### Character (class ij)
 
-Break limits: `neckBreakLimit`, `spineLimit`, `torsoBreakLimit`, `shoulderBreakLimit`,
-`hipBreakLimit`, `elbowLigamentLimit`, `kneeLigamentLimit`… plus `lostLimbs` (Set),
-`bleedCounter`, handlers (`keyDownHandler`, `contactAddHandler`…), `_startX/_startY`,
-`character_scale`, `_session`, `m_physScale`.
+Break/dismember limits — FULL list (20 keys, enumerated live 2026-09-25; discover with
+`Object.getOwnPropertyNames(char).filter(k => /Limit/.test(k))` rather than hard-coding):
+
+- Joints: `neckBreakLimit` (85), `spineLimit` (105), `torsoBreakLimit` (181),
+  `intestineLimit` (261), `shoulderBreakLimit` (75), `shoulderSnapLimit` (90),
+  `hipBreakLimit` (95), `hipSnapLimit` (110), `elbowBreakLimit` (70),
+  `elbowLigamentLimit` (80), `kneeBreakLimit` (80), `kneeLigamentLimit` (95)
+- Vehicle/prop smash: `chairSmashLimit` (200), `wheelSmashLimit` (200),
+  `jetSmashLimit` (30), `fueltankSmashLimit` (30)
+- Head/part smash (small floats, ≈1/62.5 physScale units): `headSmashLimit` (≈3.01),
+  `chestSmashLimit` (≈7.52), `pelvisSmashLimit` (≈5.52), `footSmashLimit` (≈4.01)
+
+(parenthesized values = measured baselines on a simple level; treat as indicative)
+
+Plus `lostLimbs` (Set), `bleedCounter`, handlers (`keyDownHandler`, `contactAddHandler`…),
+`_startX/_startY`, `character_scale`, `_session`, `m_physScale`.
 
 ### Camera (class J)
 
