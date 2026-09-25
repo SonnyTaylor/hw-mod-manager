@@ -40,14 +40,16 @@ Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it v
   sections Gravity + Character, drives `window.gravity` + `window.charEd`. Verified in-level.
   UI plumbing is all in `HWLibs.ui` — see its header for the section-scoped API.
 - `character-editor` — break-limit multiplier (Normal/Tough/Iron/GOD presets + slider,
-  0.05–1e9 = paper ↔ god), hotkey **I** = god toggle, Heal (**full level restart** via
-  `sessionController.restartLevel()` — the only clean limb-regrow path; see
-  docs/game-internals.md) + Stop bleed. Console API `window.charEd`
-  (setFactor/getFactor/heal/respawn/info). Limits are DISCOVERED per character instance
-  (own props matching `/Limit/`) — 20 keys found live, don't hard-code them. Baseline
-  captured per character object; re-applied every tick so respawns/level restarts are
-  covered. Verified live: discovery, god-mode application, restartLevel heal.
-  Character.reset()/create() called directly leak bodies — never use them.
+  0.05–1e9 = paper ↔ god), hotkey **I** = god toggle, Stop bleed (bleedCounter reset).
+  Console API `window.charEd` (setFactor/getFactor/heal/respawn/info) — `respawn()` is
+  a full level restart via `sessionController.restartLevel()` (documented in
+  docs/game-internals.md); it is NOT in the cheat-menu UI because "heal = level restart"
+  was confusing. Limb regrow in place is not feasible (destroyed Box2D joints; direct
+  character.reset()/create() leak bodies — never call them). Limits are DISCOVERED per
+  character instance (own props matching `/Limit/`) — 20 keys found live, don't
+  hard-code them. Baseline captured per character object; re-applied every tick so
+  respawns/level restarts are covered. Verified live: discovery, god-mode application,
+  restartLevel behavior.
 
 ## Mod library idea (TODO — shared code between mods)
 

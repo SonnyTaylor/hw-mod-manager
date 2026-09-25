@@ -4,9 +4,10 @@
  * Currently exposes:
  *   Gravity  — slider + presets (0g/Moon/Mars/Earth/Jupiter) via window.gravity
  *   Character — break-limit factor slider (0.1 fragile … 50 tough), presets
- *               (Paper/Glass/Normal/Tough/Iron), GOD button, Heal (full level
- *               restart, regrows limbs) + Stop bleed buttons, via window.charEd.
- *               Hotkey I = god toggle (character-editor).
+ *               (Paper/Glass/Normal/Tough/Iron), GOD button, Stop bleed button,
+ *               via window.charEd. Hotkey I = god toggle (character-editor).
+ *               (No limb regrow: dismemberment destroys Box2D joints; the only
+ *               game-native rebuild is a full level restart — charEd.respawn().)
  *
  * Consumes the engine mods (gravity-mod, character-editor). Injection order is
  * fs order, so engines may not exist yet when this mod's onReady fires — we
@@ -77,10 +78,8 @@
             ], (v) => { ed.setFactor(v); sync(); });
             cSec.addButtons([{ label: 'GOD', value: GOD, accent: 'red' }],
                 (v) => { ed.setFactor(v); sync(); });
-            cSec.addButtons([
-                { label: 'Heal', value: 'respawn', accent: 'green' },
-                { label: 'Stop bleed', value: 'bleed' }
-            ], (v) => { if (v === 'respawn') ed.respawn(); else ed.heal(); });
+            cSec.addButtons([{ label: 'Stop bleed', value: 'bleed' }],
+                () => { ed.heal(); });
 
             function clampFactor(f) {
                 return Math.max(0.1, Math.min(50, f >= GOD ? 50 : f));
