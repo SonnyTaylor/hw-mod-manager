@@ -1,6 +1,9 @@
 {
   "name": "Skin Packs",
   "version": "0.1.0",
-  "description": "Swap game textures (backgrounds, UI, icons) via skin.json packs. Replacement PNGs must match the original pixel size.",
-  "requires": ["game"]
+  "description": "Swap game textures (backgrounds, UI, icons) via skin.json packs. Replacement PNGs must match the original pixel size. Headless: the saved pack auto-applies at boot; switch via console window.skinPacks.",
+  "author": "HW Mod Manager",
+  "tags": ["textures", "content"],
+  "requires": ["game"],
+  "hotToggle": true
 }

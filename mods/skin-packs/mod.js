@@ -32,7 +32,7 @@
     let activeId = null;
 
     function findTexBySuffix(suffix) {
-        const pixi = HW.require(99430);
+        const pixi = window.HWLibs.game.pixi();
         const hits = [];
         for (const t of Object.values(pixi.WpD.TextureCache)) {
             const r = t && t.baseTexture && t.baseTexture.resource;
@@ -43,7 +43,7 @@
     }
 
     async function applyPack(p) {
-        const pixi = HW.require(99430);
+        const pixi = window.HWLibs.game.pixi();
         restore();
         let appliedCount = 0, skipped = [];
         for (const [gamePath, localFile] of Object.entries(p.replace || {})) {

@@ -2,6 +2,6 @@
 echo Happy Wheels Mod Status
 echo ======================
 echo.
-node tools/patch-game.js status
+node tools\hw.js status
 echo.
 pause

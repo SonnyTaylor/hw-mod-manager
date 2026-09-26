@@ -127,20 +127,44 @@ const commands = {
         fs.writeFileSync(path.join(modDir, 'mod.json'), JSON.stringify({
             name,
             version: '0.1.0',
-            description: 'TODO',
+            description: 'TODO: what does this mod do?',
             author: '',
-            tags: []
+            tags: [],
+            hotToggle: true,
+            settings: [
+                { id: 'example', type: 'toggle', label: 'Example setting', default: true }
+            ]
         }, null, 4) + '\n');
 
         fs.writeFileSync(path.join(modDir, 'mod.js'), `/**
  * ${name}
+ *
+ * Contract (see mods/AGENTS.md): register onSettings/onDisable at IIFE
+ * top level so hot-toggle and hot-settings work.
  */
 (function () {
     'use strict';
     const HW = window.__HW__;
 
+    let ready = false;
+    let pending = null;
+
+    function applySettings(values) {
+        if (!ready) { pending = values; return; }   // onReady may lag injection
+        HW.log('${name}', 'settings:', values);
+        // TODO: apply values.example
+    }
+
+    HW.onSettings(applySettings);   // manager pushes saved values (boot + live)
+    HW.onDisable(function () {
+        // TODO: teardown — restore game state, remove UI (panel.destroy())
+        ready = false;
+    });
+
     HW.onReady(function () {
+        ready = true;
         HW.log('${name}', 'loaded!');
+        applySettings(pending || HW.settings());
     });
 })();
 `);
@@ -166,13 +190,35 @@ const commands = {
     },
 
     list() {
-        const fmt = (dir, label) => {
+        // Canonical manifest fields for mods we author (see mods/AGENTS.md).
+        const REQUIRED = ['name', 'version', 'description', 'author', 'tags', 'hotToggle'];
+        const NOT_MODS = ['_lib', 'node_modules'];
+        const fmt = (dir, label, strict) => {
             if (!fs.existsSync(dir)) return console.log(`${label}: (missing)`);
             const dirs = fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory());
             console.log(`${label}: ${dirs.length ? dirs.map(d => d.name).join(', ') : '(none)'}`);
+            for (const d of dirs) {
+                if (NOT_MODS.includes(d.name)) continue;
+                const issues = [];
+                let m = null;
+                const mf = path.join(dir, d.name, 'mod.json');
+                if (!fs.existsSync(mf)) issues.push('no mod.json');
+                else {
+                    try { m = JSON.parse(fs.readFileSync(mf, 'utf8')); }
+                    catch (e) { issues.push('bad mod.json: ' + e.message); }
+                }
+                // Entry point: mod.js, or Jimbob-style `web` (docs/rival-ecosystems.md).
+                const entry = fs.existsSync(path.join(dir, d.name, 'mod.js')) || (m && m.web);
+                if (!entry) issues.push('no entry point (mod.js or web)');
+                if (strict && m) {
+                    const missing = REQUIRED.filter(k => !(k in m));
+                    if (missing.length) issues.push('missing fields: ' + missing.join(', '));
+                }
+                if (issues.length) console.log(`   ⚠ ${d.name}: ${issues.join('; ')}`);
+            }
         };
-        fmt(PROJECT_MODS, '📁 project mods/');
-        fmt(GAME_MODS, '📁 game mods/  ');
+        fmt(PROJECT_MODS, '📁 project mods/', true);
+        fmt(GAME_MODS, '📁 game mods/  ', false);
     }
 };
 

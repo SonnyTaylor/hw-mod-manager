@@ -15,7 +15,9 @@ mods/<name>/
 └── mod.js     # plain browser script (IIFE), loaded into the game page
 ```
 
-Manifest fields beyond the basics:
+Manifest fields beyond the basics — canonical schema, validated by `hw list`:
+`name`, `version`, `description`, `author`, `tags` are required on every mod;
+`requires`, `hotToggle`, `settings` are optional and described below.
 
 - `"requires": ["game"]` — HWLibs the host must find before injecting (else refused).
 - `"hotToggle": true` — the mod implements `HW.onDisable` teardown and can be
@@ -129,13 +131,28 @@ Box2D 2.1a-port API surface, reachable globals, UI overlay pattern. Consume it v
 - `physgun-mod` — physics gun: grab/drag/fling bodies (hotkey **G** to arm, LMB grab).
   Skips static bodies, ground and endBlock. Settings: strength slider (0.25–5x);
   onDisable → physgun.off().
+- `character-packs` — Jimbob-compatible character packs (character.json + sheet).
+  Headless (no panel): the saved pack auto-applies at boot + every new level session;
+  console API `window.charPacks` (list/apply/reset/current). Host mirrors packs into
+  webroot (`./js/hw-character-packs/`). onDisable → unskin.
+- `skin-packs` — game texture swapping via `skin.json` replace-map (asset-path suffix →
+  same-size PNG), canvas→baseTexture in-place swap with originals kept for restore.
+  Headless: console API `window.skinPacks` (same shape). onDisable → restore.
 
-## Mod library idea (TODO — shared code between mods)
+## Mod library (`mods/_lib/` — shared code)
 
-Desired: mods shouldn't re-implement UI panels, settings storage, object-graph lookups.
-Sketch: `lib/` directory loaded by the host BEFORE mods; each lib registers itself into
-`window.HWLibs.<name>`; mods consume via `HWLibs.ui.panel(...)`, `HWLibs.settings.get(...)`.
-Not started — see root AGENTS.md TODO.
+`mods/_lib/*.js` is loaded by the host BEFORE mods; each lib registers itself into
+`window.HWLibs.<name>`, and a mod's `"requires"` gates injection on the named libs.
+Don't re-implement UI panels, settings storage, or object-graph lookups in mods:
+
+- `game` — safe accessors over the verified graph (`session/world/level/character/camera`,
+  `inLevel()`, gravity helpers) plus **`pixi()`** — the PixiJS webpack module
+  (TextureCache at `.WpD.TextureCache`). The webpack module ID lives in ONE place
+  (`mods/_lib/game.js`); mods call `HWLibs.game.pixi()` instead of `HW.require(<id>)`
+  so a Steam update only needs one edit there.
+- `settings` — namespaced localStorage settings (`HWLibs.settings.get/set/remove`).
+- `ui` v3 — panel factory (auto-dock, drag-persist, sections, sliders, toggles).
+  Visual harness without the game: `mods/_lib/_preview.html` (open in a browser).
 
 ## Rules for writing mods
 

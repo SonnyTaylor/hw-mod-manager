@@ -1,6 +1,9 @@
 {
   "name": "Character Packs",
   "version": "0.1.0",
-  "description": "Custom character packs (character.json + sheet). Select in the Character Packs panel.",
-  "requires": ["game"]
+  "description": "Custom character packs (character.json + sheet, Jimbob-compatible schema). Headless: the saved pack auto-applies at boot and in every new level session; switch via console window.charPacks.",
+  "author": "HW Mod Manager",
+  "tags": ["characters", "content"],
+  "requires": ["game"],
+  "hotToggle": true
 }

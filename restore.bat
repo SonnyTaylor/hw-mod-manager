@@ -12,6 +12,6 @@ if /i not "%confirm%"=="Y" (
     exit /b
 )
 echo.
-node tools/patch-game.js restore
+node tools\hw.js restore
 echo.
 pause

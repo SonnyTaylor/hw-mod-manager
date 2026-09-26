@@ -63,6 +63,15 @@
             if (!w || !w.m_gravity) return null;
             return { x: w.m_gravity.x, y: w.m_gravity.y, multiplier: w.m_gravity.y / 10 };
         },
+        /**
+         * PixiJS webpack module (TextureCache lives at .WpD.TextureCache).
+         * The webpack module ID lives HERE only — mods must not hard-code
+         * HW.require(<id>). Re-verify after Steam updates (root AGENTS.md,
+         * 'Webpack master key'). Returns null when the capture isn't ready.
+         */
+        pixi() {
+            try { return HW.require(99430); } catch (e) { warnOnce('pixi', 'pixi: webpack require capture not ready'); return null; }
+        },
         /** Gravity convenience: set multiplier (y-down, +10 = Earth). */
         setGravity(multiplier) {
             const w = this.world();

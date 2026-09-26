@@ -92,7 +92,7 @@ mods, and libs are platform-neutral.
 | `tools/platform.js` | Shared platform/install detection: boot-binary name per OS, Steam paths (incl. Flatpak), appid, `detectGamePath()`. |
 | `tools/hw.js` | Dev CLI (`hw dev` is the main loop). |
 | `loader/mod-host.js` | Main-process mod host (copied into asar at `electron/out/`). |
-| `mods/<name>/mod.json` | Mod manifest: name, version, description, author, tags. |
+| `mods/<name>/mod.json` | Mod manifest: name, version, description, author, tags (required) + requires/hotToggle/settings schema (optional; `hw list` validates). |
 | `mods/<name>/mod.js` | Mod code — plain browser script IIFE. |
 
 ## Commands
@@ -139,7 +139,6 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
 - **Desktop manager: UI shell + core working (v0.1)** — Tauri 2 app in `app/` (bun, Svelte 5 + Tailwind v4): game detection with status chips, mod list with mechanical toggle switches, schema-driven settings panels, LAUNCH via Steam, mods-folder opener. **Hot-toggle + hot-settings verified end-to-end** (2026-09-25): manager → state.json + `.hw-commands.jsonl` → mod-host executes in page (log shows `Hot-disabled/-enabled`, `Settings applied`); re-injection replaces list entries without duplication. All 9 mods now hot-toggleable with teardowns (gravity/character/viewport/time/hud/freecam/physgun/cheat-menu/devtools).
 - **Rust patcher: DONE (2026-09-25)** — `app/src-tauri/src/` has `fuses.rs` (byte-level @electron/fuses port, verified: `npx @electron/fuses read` agrees) and `asar.rs` (byte-level @electron/asar extract/pack with per-file SHA256 integrity + `node_modules/steamworks.js` unpack rule; roundtrip test against the real archive passes) plus `patcher.rs` orchestration (same steps as tools/patch-game.js; mod-host.js embedded via `include_str!`). **Live-verified**: restore → Rust patch → launch → all 9 mods injected. The manager is now standalone; tests: `cargo test` (asar roundtrip) / `HW_TEST_LIVE_PATCH=1 cargo test live_patch -- --nocapture` (patches real install). Node patcher remains for CLI flows.
 - **Marketplace: NOT STARTED** — planned as community git repo hosting `index.json` (metadata + zip URLs); manager tab is a placeholder describing the pipeline. Creator flow = template + PR. **Rival loaders appeared 2026-09-21..25 (HWML/Nexus, JHWML/GameBanana+Nexus) — compat strategy + live-verified Jimbob-mod support documented in docs/rival-ecosystems.md; jimbobs-multiplayer runs on our loader.**
-- **Creator/mod templates** — `hw new` scaffolding should gain hotToggle + settings-schema examples (see mods/AGENTS.md contract).
 - **Live reload: DONE (2026-09-26)** — mod-host watches injected mod folders (1s mtime poll): edit → teardown → re-inject, settings reapplied; `_lib` change = full cycle. `hw install` is now a live-reload trigger. Verified: gravity-mod hot-reloaded, full 10-mod cycle on lib change. Sidecars not reloaded (require cache).
 - **Self-healing launch: DONE (2026-09-26)** — `hw launch` and the manager's LAUNCH button re-patch (idempotent) when Steam updates un-mod the install (pitfall 11), so players never see a dead mod install. Patch failure → vanilla launch, never blocks play.
 - Mod manager GUI — **replaced by the desktop manager (`app/`)**; cheat-menu's panel remains the in-game UI.

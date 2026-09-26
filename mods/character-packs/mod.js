@@ -32,7 +32,7 @@
         // Game assets live under assets-<hash>/... Find the root from any
         // texture URL currently loaded (PIXI utils TextureCache).
         try {
-            const pixi = HW.require(99430);
+            const pixi = window.HWLibs.game.pixi();
             for (const t of Object.values(pixi.WpD.TextureCache)) {
                 const u = (t && t.baseTexture && t.baseTexture.resource && (t.baseTexture.resource.url || t.baseTexture.resource.src)) || '';
                 const m = /^(.*\/assets-[^/]+\/)/.exec(u);
@@ -44,7 +44,7 @@
 
     // Build frameName → Texture map for the pack (sheet scaled to atlas grid).
     async function buildPack(p) {
-        const pixi = HW.require(99430);
+        const pixi = window.HWLibs.game.pixi();
         const root = assetRoot();
         if (!root) throw new Error('game assets not ready yet');
         const atlasResp = await fetch(`${root}animate/character${p.base}/character${p.base}.json`);
