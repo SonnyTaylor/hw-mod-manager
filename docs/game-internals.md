@@ -10,7 +10,7 @@
 |---|---|
 | `hwNative` | Preload IPC bridge (steam calls, presence, deeplink, fullscreen, auth, friends) |
 | `HW_SETTINGS` | Frozen config: `{siteURL}` |
-| `Tmueo2t1b0` | Webpack chunk table — array with one entry `[[520], modules]` pushed by `dependencies.js`; the obfuscated `index.js` consumes it directly (its `.push` is still native) |
+| `Tmueo5kmh4` | Webpack chunk table (key **varies per build**, old: `Tmueo2t1b0`) — push is overridden; push a fake chunk to capture the bundle's `require` (see loader/AGENTS.md "master key") |
 | `__SENTRY__` | Sentry SDK state |
 | `Howler`, `Howl`, `Sound` | Howler.js audio |
 | `gsapVersions` | GSAP tween lib |

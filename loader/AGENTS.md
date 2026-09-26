@@ -25,6 +25,19 @@ The obfuscated game keeps the `PIXI.Application` inside closures — no global, 
 
 Note the captured app is the game's own Application subclass (obfuscated class `y4` with game methods `update`, `onAssetsLoaded`, `updatePixiResolution`, `resize`) — the real thing, not a shim.
 
+### Webpack require — the "master key" (verified 2026-09-26)
+
+The webpack runtime overrides the chunk array's `push`. Pushing a fake chunk
+`[['__hw_probe__'], {}, require => …]` executes the callback with the bundle's require
+function → **every obfuscated module becomes accessible by numeric ID**. Implemented in
+the RUNTIME as `webpackProbe()` (scans generically for chunk-like arrays with overridden
+push — the table key varies per build: `Tmueo2t1b0` old, `Tmueo5kmh4` current).
+Exposed as `window.__HW__.require` + `window.__HW__.state` (module 35057 `.w`) and a
+compat facade `window.HWGhost` for Jimbob-ecosystem mods (see docs/rival-ecosystems.md).
+Known IDs: `35057` game state, `99430` PixiJS (`mcf` Container, `kxk` Sprite, `gPd`
+Texture, `uqu` Matrix, `M_G` Rectangle, `WpD` utils/TextureCache). Their code also uses
+`29552` — absent on our build.
+
 ### Eval bridge (dev tooling)
 
 No remote-debugging-port (main.js exits if present). For live JS execution in the page: write JS to `<game>/mods/dev-eval.js`; a 500ms poller runs it via `wc.executeJavaScript` and writes the result to `<game>/mods/dev-eval-result.txt`. Re-running the same content is a no-op (dedupe). This is how the agent can probe the live game from bash. Files are recreated on demand; delete after use.
@@ -56,6 +69,18 @@ The obfuscated game keeps the `PIXI.Application` inside closures — no global, 
 3. **Canvas probing (legacy)** — probes canvas own properties for `{renderer, stage, ticker}`. Doesn't work on this build; kept as harmless fallback.
 
 Note the captured app is the game's own Application subclass (obfuscated class `y4` with game methods `update`, `onAssetsLoaded`, `updatePixiResolution`, `resize`) — the real thing, not a shim.
+
+### Mod injection formats
+
+Two formats supported by `injectMod`:
+- **ours**: `<mod>/mod.js` single file (mods/AGENTS.md contract).
+- **Jimbob-ecosystem compat** (docs/rival-ecosystems.md): `<mod>/mod.json` with `"web":
+  [...]` (files under `<mod>/web/`) — injected in order in one executeJavaScript, one
+  try/catch per file; `"electronMain"` sidecar `require()`d in the main process after
+  page injection OK (`loadSidecar`); `"electronPreload"` unsupported (logged). After the
+  files run, a compat step patches our captured webpack require into their
+  `window.HWGhost` facade if their own probe failed. Boot loop accepts these dirs
+  without mod.js.
 
 ### Shared libs (mods/_lib/)
 

@@ -57,6 +57,11 @@ window.__HW__ = {
     _mods: {},
     _settingsStore: {},
     _current: null,
+    // Webpack require (the "master key"): set once the chunk-table probe
+    // succeeds. Exposes every obfuscated game module by numeric ID.
+    require: null,
+    // Game state module (webpack module 35057 → exports .w). Populated with require.
+    state: null,
 
     onReady(cb) {
         if (this.ready) cb(this.app);
@@ -129,6 +134,16 @@ window.__HW__ = {
         return this._setApp(app);
     },
 
+    // Called when the chunk-table probe captured the webpack require.
+    _setRequire(req) {
+        if (!this.require) {
+            this.require = req;
+            try { this.state = req(35057) && req(35057).w || null; } catch (e) { this.state = null; }
+            console.log('%c[HW]%c Webpack require captured — game modules accessible via __HW__.require(id)', 'color:#0af;font-weight:bold');
+        }
+        return true;
+    },
+
     // Called when the preload pre-hook captured the real Application.
     _setApp(app) {
         if (this.ready) return true;
@@ -140,6 +155,41 @@ window.__HW__ = {
         return true;
     }
 };
+
+// Webpack chunk-table probe (the "master key"). The game's webpack runtime
+// overrides the chunk array's push() — pushing a fake chunk executes our
+// callback with the bundle's require function, granting access to every
+// obfuscated module by numeric ID (35057 = game state {w: ...}, 99430 = PixiJS).
+// Verified live 2026-09-26 (this build: Tmueo5kmh4, old build: Tmueo2t1b0 —
+// the KEY NAME VARIES PER BUILD, so never match by name). Instead: scan for
+// arrays with an overridden push whose entries are webpack chunk tuples.
+(function webpackProbe() {
+    try {
+        for (const key of Object.keys(window)) {
+            const table = window[key];
+            if (!Array.isArray(table) || table.push === Array.prototype.push) continue;
+            if (!table.length || !Array.isArray(table[0]) || !Array.isArray(table[0][0]) || typeof table[0][1] !== 'object') continue;
+            let req = null;
+            table.push([['__hw_probe__'], {}, r => { req = r; }]);
+            // Remove our probe chunk so the table stays clean.
+            for (let i = table.length - 1; i >= 0; i--) {
+                const c = table[i];
+                if (Array.isArray(c) && Array.isArray(c[0]) && c[0][0] === '__hw_probe__') table.splice(i, 1);
+            }
+            if (req) {
+                window.__HW__._setRequire(req);
+                // Compatibility facade for Jimbob-ecosystem mods (see docs/rival-ecosystems.md):
+                // they expect window.HWGhost with .require and .state (game-state module .w).
+                try {
+                    const st = req(35057) && req(35057).w;
+                    window.HWGhost = window.HWGhost || { version: '0.1.0', require: req, errors: [], state: st };
+                } catch (e) {}
+                return;
+            }
+        }
+    } catch (e) {}
+    setTimeout(webpackProbe, 1000);
+})();
 
 // Poll the preload pre-hook's capture slot. The hook only catches the app
 // once a ticker frame fires after game scripts run; retry until found.
@@ -273,7 +323,10 @@ async function handleCommand(wc, modsDir, cmd) {
         if (cmd.enabled) {
             const state = readState(modsDir);
             const res = await injectMod(wc, modsDir, cmd.id, state);
-            if (res.ok) log(`Hot-enabled: ${cmd.id} [${res.result}]`);
+            if (res.ok) {
+                log(`Hot-enabled: ${cmd.id} [${res.result}]`);
+                loadSidecar(modsDir, cmd.id, res.manifest);
+            }
             else log(`Hot-enable FAILED: ${cmd.id} → ${res.result}`);
         } else {
             const expr = `window.__HW__._disableMod(${JSON.stringify(cmd.id)})`;
@@ -406,18 +459,26 @@ function readManifest(modsDir, dirName) {
 }
 
 // Inject one mod into the page. Returns { ok, result }.
+//
+// Two mod formats are supported:
+// - ours: single mod.js (see mods/AGENTS.md contract)
+// - Jimbob-ecosystem (docs/rival-ecosystems.md): mod.json declares a `web`
+//   array of files under <mod>/web/; loaded in order inside ONE
+//   executeJavaScript so ordering is preserved, one try/catch per file.
 async function injectMod(wc, modsDir, dirName, state) {
-    const code = fs.readFileSync(path.join(modsDir, dirName, 'mod.js'), 'utf8');
     const manifest = { ...readManifest(modsDir, dirName) };
+    const webFiles = Array.isArray(manifest.web) && manifest.web.length
+        ? manifest.web.map(f => ({ file: f, code: fs.readFileSync(path.join(modsDir, dirName, 'web', f), 'utf8') }))
+        : [{ file: 'mod.js', code: fs.readFileSync(path.join(modsDir, dirName, 'mod.js'), 'utf8') }];
 
     const registration = `
         try {
             const __req = ${JSON.stringify(manifest.requires || [])}.filter(n => !(window.HWLibs && window.HWLibs[n]));
             if (__req.length) return 'MISSING_LIBS|' + __req.join(',');
             window.__HW__._registerCurrent(${JSON.stringify(manifest)});
-            console.log('[HW] Loaded mod: ${manifest.name} v${manifest.version}');
+            console.log('[HW] Loaded mod: ' + ${JSON.stringify(manifest.name)} + ' v' + ${JSON.stringify(manifest.version)});
         } catch(e) {
-            console.error('[HW] Mod ${manifest.name} failed:', e);
+            console.error('[HW] Mod ' + ${JSON.stringify(manifest.name)} + ' failed:', e);
         }
     `;
 
@@ -426,10 +487,26 @@ async function injectMod(wc, modsDir, dirName, state) {
     // to execute" message is useless for debugging).
     const wrapped = `(() => {
     window.__HW__._current = ${JSON.stringify(dirName)};
+    const __errs = [];
     try {
-        ${code}
+${webFiles.map(f => `        try {
+            ${f.code}
+        } catch (e) { __errs.push('${f.file}: ' + (e && e.message ? e.message : e)); }`).join('\n')}
+        // Jimbob-ecosystem compat: mods that failed to self-capture the webpack
+        // require (their probe hardcodes chunk-table names ending in '0' — ours
+        // ends in '4') get ours injected into their facade object.
+        try {
+            const __g = window.HWGhost;
+            if (__g && !__g.require && window.__HW__.require) {
+                __g.require = window.__HW__.require;
+                if (typeof __g.onRequire === 'function') __g.onRequire(__g.require);
+                else {
+                    try { const __w = __g.require(35057) && __g.require(35057).w; if (__w) __g.state = __w; } catch (e) {}
+                }
+            }
+        } catch (e) {}
         ${registration}
-        return 'OK|mods=' + (window.__HW__ ? window.__HW__.mods.length : '?');
+        return __errs.length ? 'ERR|' + __errs.join(' | ') : 'OK|mods=' + (window.__HW__ ? window.__HW__.mods.length : '?');
     } catch (e) {
         return 'ERR|' + (e && e.message ? e.message : String(e)) + '|' + (e && e.stack ? String(e.stack).split('\\n').slice(0,3).join(' << ') : '');
     }
@@ -462,6 +539,23 @@ async function injectMod(wc, modsDir, dirName, state) {
     } catch (e) {
         log(`Failed to inject ${dirName}:`, e.message);
         return { ok: false, result: e.message, manifest };
+    }
+}
+
+// Jimbob-format mods may ship a main-process sidecar (websocket relay, IPC
+// handlers). Load it AFTER the page side injects OK. `require` resolves
+// node_modules by walking up: <game>/mods/node_modules works for deps the
+// mod needs (e.g. ws) without touching the asar.
+function loadSidecar(modsDir, dirName, manifest) {
+    if (!manifest || !manifest.electronMain) return;
+    try {
+        require(path.join(modsDir, dirName, manifest.electronMain));
+        log(`Sidecar loaded: ${dirName} (${manifest.electronMain})`);
+    } catch (e) {
+        log(`Sidecar FAILED: ${dirName}: ${e.message}`);
+    }
+    if (manifest.electronPreload) {
+        log(`Sidecar note: ${dirName} declares electronPreload — unsupported (preloads bind at window creation); mods with a page WebSocket fallback still work`);
     }
 }
 
@@ -544,10 +638,11 @@ module.exports = async function loadMods(wc) {
     for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const dirName = entry.name;
-        const modJs = path.join(modsDir, dirName, 'mod.js');
-        if (dirName === '_lib' || !fs.existsSync(modJs)) continue;
-
+        if (dirName === '_lib') continue;
         const manifest = readManifest(modsDir, dirName);
+        // Our mods: <dir>/mod.js. Rival-format mods: <dir>/mod.json with a `web` array.
+        const isRivalFormat = Array.isArray(manifest.web) && manifest.web.length > 0;
+        if (!fs.existsSync(path.join(modsDir, dirName, 'mod.js')) && !isRivalFormat) continue;
 
         // Disabled at boot: register in the mods list without injecting code,
         // so the manager (and HW.mods) still shows it exists.
@@ -563,6 +658,9 @@ module.exports = async function loadMods(wc) {
         }
 
         const res = await injectMod(wc, modsDir, dirName, state);
-        if (res.ok) log(`Injected: ${manifest.name} v${manifest.version} [${res.result}]`);
+        if (res.ok) {
+            log(`Injected: ${manifest.name} v${manifest.version} [${res.result}]`);
+            loadSidecar(modsDir, dirName, manifest);
+        }
     }
 };
