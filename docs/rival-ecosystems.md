@@ -93,3 +93,25 @@ new session via onTick.
 - Custom character format: `<dir>/character.json` = `{name, base: <vanilla character
   index 1..11>, sheet: png, icon: png}` + `index.json` listing dirs. Sheet must match
   base atlas aspect ratio; frames scaled from `assets-*/animate/character<base>/`.
+
+## Skin packs (native, v0.1.0 — verified 2026-09-26)
+
+`mods/skin-packs/packs/<id>/skin.json`:
+`{"name", "author?", "replace": {"<game asset path>": "<local file>"}}` — asset paths
+match as suffixes against cached texture URLs (game prefixes `assets-<hash>/`).
+**Replacement PNG must equal the original's pixel size** (frame rects stay valid).
+
+Mechanism (verified live): pack image → canvas → assigned as the cached Texture's
+`baseTexture` in place; every sprite referencing that texture (present + future,
+82 cache entries for Segway Guy) picks it up instantly, no restart. Originals kept
+for restore (Vanilla button / teardown).
+
+Swappable surface (from live TextureCache probe):
+`animate/game/a-s.png` (level object atlases), `animate/backgrounds/backgrounds_atlas_1..3`,
+`animate/game-ui/game_ui_atlas_1..5`, `animate/character1..11/*.png`, `animate/editor`,
+`image/icons`, `image/level-browser`, `image/app-icon.png` — ~2900 cached texture refs.
+
+Gotcha fixed: pack-mod hot-reload must re-run the webroot sync (`publishPacks`) —
+otherwise newly added pack files 404 until reboot (the mirror only rebuilt at boot).
+Note: the menu uses `backgrounds_atlas_2/3` (atlas_1 loads in some sessions only) —
+skin packs should cover all three or auto-apply retries until loaded (implemented).

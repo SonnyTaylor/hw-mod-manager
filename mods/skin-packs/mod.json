@@ -1,0 +1,6 @@
+{
+  "name": "Skin Packs",
+  "version": "0.1.0",
+  "description": "Swap game textures (backgrounds, UI, icons) via skin.json packs. Replacement PNGs must match the original pixel size.",
+  "requires": ["game", "ui"]
+}

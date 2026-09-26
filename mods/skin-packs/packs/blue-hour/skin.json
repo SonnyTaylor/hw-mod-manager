@@ -1,0 +1,7 @@
+{
+  "name": "Blue Segway Guy",
+  "author": "HW Mod Manager demo",
+  "replace": {
+    "animate/character2/character2.png": "character2.png"
+  }
+}

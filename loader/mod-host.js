@@ -64,6 +64,8 @@ window.__HW__ = {
     state: null,
     // Native character packs, synced from mods/character-packs/packs/ by the host.
     characterPacks: [],
+    // Native skin packs, synced from mods/skin-packs/packs/ by the host.
+    skinPacks: [],
 
     onReady(cb) {
         if (this.ready) cb(this.app);
@@ -332,6 +334,7 @@ async function handleCommand(wc, modsDir, cmd) {
                 log(`Hot-enabled: ${cmd.id} [${res.result}]`);
                 loadSidecar(modsDir, cmd.id, res.manifest);
                 reloadRegistry.set(cmd.id, snapshotDir(path.join(modsDir, cmd.id)));
+                try { await publishPacks(wc, modsDir, cmd.id); } catch (e) { log(`Pack re-sync failed (${cmd.id}):`, e.message); }
             }
             else log(`Hot-enable FAILED: ${cmd.id} → ${res.result}`);
         } else {
@@ -600,12 +603,26 @@ function snapshotChanged(cur, prev) {
     return false;
 }
 
+// Publish pack manifests into the page (used at boot AND after hot-reload of
+// a pack mod — the webroot mirror is rebuilt from disk each call).
+async function publishPacks(wc, modsDir, dirName) {
+    let key = null, packs = [];
+    if (dirName === 'character-packs') { key = 'characterPacks'; packs = syncCharacterPacks(modsDir); }
+    else if (dirName === 'skin-packs') { key = 'skinPacks'; packs = syncSkinPacks(modsDir); }
+    else return;
+    await wc.executeJavaScript(`window.__HW__.${key} = ${JSON.stringify(packs)};`, true);
+    if (packs.length) log(`${dirName} re-synced: ${packs.map(p => p.id).join(', ')}`);
+}
+
 // Re-inject one mod: teardown, inject fresh, reapply saved settings.
 async function reloadMod(wc, modsDir, dirName) {
     const state = readState(modsDir);
     await wc.executeJavaScript(`window.__HW__._disableMod(${JSON.stringify(dirName)})`, true);
     const res = await injectMod(wc, modsDir, dirName, state);
-    if (res.ok) log(`Hot-reloaded: ${dirName}`);
+    if (res.ok) {
+        log(`Hot-reloaded: ${dirName}`);
+        try { await publishPacks(wc, modsDir, dirName); } catch (e) { log(`Pack re-sync failed (${dirName}):`, e.message); }
+    }
     else log(`Hot-reload FAILED: ${dirName} → ${res.result}`);
     return res.ok;
 }
@@ -661,18 +678,14 @@ function startReloadWatcher(wc, modsDir) {
     }, 1000);
 }
 
-// --- Character packs -------------------------------------------------------
-// Native character-pack serving. A pack is a folder under
-// <game>/mods/character-packs/packs/<pack>/ with a character.json:
-//   {"name": str, "base": 1..11 (vanilla character index), "sheet": png, "icon": png}
-// (same schema Jimbob's Custom Characters uses — their content drops in as-is).
-// syncCharacterPacks(): rebuilds <game>/resources/webroot/js/hw-character-packs/
-// from the packs dir (additive webroot folder, wiped + re-copied each boot so
-// it always mirrors the mods folder) and returns the manifest summaries.
-// RUNTIME exposes them as window.__HW__.characterPacks.
-function syncCharacterPacks(modsDir) {
-    const packsDir = path.join(modsDir, 'character-packs', 'packs');
-    const dstRoot = path.join(path.dirname(modsDir), 'resources', 'webroot', 'js', 'hw-character-packs');
+// --- Webroot pack serving (character packs + skin packs) --------------------
+// A pack = a folder under <game>/mods/<srcName>/packs/<id>/ with a manifest JSON.
+// syncWebrootPacks(): rebuilds <game>/resources/webroot/js/<webrootName>/ from
+// the packs dir (additive webroot folder, wiped + re-copied each boot so it
+// always mirrors the mods folder) and returns the manifest summaries.
+function syncWebrootPacks(modsDir, srcName, webrootName, manifestFile) {
+    const packsDir = path.join(modsDir, srcName, 'packs');
+    const dstRoot = path.join(path.dirname(modsDir), 'resources', 'webroot', 'js', webrootName);
     const packs = [];
     let entries;
     try { entries = fs.readdirSync(packsDir, { withFileTypes: true }); } catch { return packs; }
@@ -682,17 +695,29 @@ function syncCharacterPacks(modsDir) {
     for (const e of entries) {
         if (!e.isDirectory()) continue;
         const src = path.join(packsDir, e.name);
-        const manifestPath = path.join(src, 'character.json');
+        const manifestPath = path.join(src, manifestFile);
         if (!fs.existsSync(manifestPath)) continue;
         let manifest;
         try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
-        catch (err) { log(`Bad character.json in pack ${e.name}:`, err.message); continue; }
+        catch (err) { log(`Bad ${manifestFile} in pack ${e.name}:`, err.message); continue; }
         try {
             fs.cpSync(src, path.join(dstRoot, e.name), { recursive: true });
             packs.push({ id: e.name, ...manifest });
         } catch (err) { log(`Pack copy failed (${e.name}):`, err.message); }
     }
     return packs;
+}
+
+// Character packs: {name, base (vanilla char index), sheet, icon}; consumed by
+// the character-packs mod via window.__HW__.characterPacks.
+function syncCharacterPacks(modsDir) {
+    return syncWebrootPacks(modsDir, 'character-packs', 'hw-character-packs', 'character.json');
+}
+
+// Skin packs: {name, author?, replace: { "<game asset path>": "<local file>" }};
+// consumed by the skin-packs mod via window.__HW__.skinPacks.
+function syncSkinPacks(modsDir) {
+    return syncWebrootPacks(modsDir, 'skin-packs', 'hw-skin-packs', 'skin.json');
 }
 
 module.exports = async function loadMods(wc) {
@@ -752,13 +777,15 @@ module.exports = async function loadMods(wc) {
     // Character packs: mirror mods/character-packs/packs/* into webroot and
     // publish the manifests into the page BEFORE mods load.
     try {
-        const packs = syncCharacterPacks(modsDir);
         await wc.executeJavaScript(
-            `window.__HW__.characterPacks = ${JSON.stringify(packs)};`, true,
+            `window.__HW__.characterPacks = ${JSON.stringify(syncCharacterPacks(modsDir))};`, true,
         );
-        if (packs.length) log(`Character packs synced: ${packs.map(p => p.id).join(', ')}`);
+        await wc.executeJavaScript(
+            `window.__HW__.skinPacks = ${JSON.stringify(syncSkinPacks(modsDir))};`, true,
+        );
+        log(`Packs synced: characters=${(syncCharacterPacks(modsDir)).length} skins=${(syncSkinPacks(modsDir)).length}`);
     } catch (e) {
-        log('Character pack sync failed:', e.message);
+        log('Pack sync failed:', e.message);
     }
 
     const state = readState(modsDir);
