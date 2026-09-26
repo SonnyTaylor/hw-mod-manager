@@ -96,8 +96,20 @@ pub fn info(app: &AppHandle) -> GameInfo {
 
 /// Launch the game. Linux must go through Steam (pitfall 17: direct exec gets
 /// bounced back by steamworks restartAppIfNecessary).
+///
+/// Self-healing: Steam updates / file verification restore a pristine binary +
+/// asar (pitfall 11), silently un-modding the game. The patcher is idempotent,
+/// so before every launch we re-patch if the state file says unpatched. A
+/// failed self-heal does NOT block the launch — vanilla play beats no play;
+/// the status page still shows the unpatched state.
 pub fn launch(app: &AppHandle) -> Result<(), String> {
     let root = resolve(app).root;
+    let patcher = crate::patcher::Patcher::new(root.clone());
+    if !patcher.is_patched() {
+        if let Err(e) = patcher.patch() {
+            eprintln!("[launch] self-heal patch failed, launching vanilla: {e}");
+        }
+    }
     #[cfg(target_os = "windows")]
     {
         let exe = root.join(EXE_NAME);

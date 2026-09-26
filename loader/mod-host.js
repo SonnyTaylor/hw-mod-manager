@@ -326,6 +326,7 @@ async function handleCommand(wc, modsDir, cmd) {
             if (res.ok) {
                 log(`Hot-enabled: ${cmd.id} [${res.result}]`);
                 loadSidecar(modsDir, cmd.id, res.manifest);
+                reloadRegistry.set(cmd.id, snapshotDir(path.join(modsDir, cmd.id)));
             }
             else log(`Hot-enable FAILED: ${cmd.id} → ${res.result}`);
         } else {
@@ -515,6 +516,8 @@ ${webFiles.map(f => `        try {
     try {
         const result = await wc.executeJavaScript(wrapped, true);
         if (result.startsWith('OK')) {
+            // Track for live reload (see startReloadWatcher).
+            reloadRegistry.set(dirName, snapshotDir(path.join(modsDir, dirName)));
             // Saved settings (manager state.json) are applied right after
             // registration so mods observe their configured values.
             const vals = savedSettings(dirName, state);
@@ -559,6 +562,100 @@ function loadSidecar(modsDir, dirName, manifest) {
     }
 }
 
+// --- Live reload (creator loop) --------------------------------------------
+// Watches every injected mod's folder (and mods/_lib). Any file change →
+// teardown (onDisable) → re-inject → saved settings reapplied, within ~1s.
+// This makes `hw install <mod>` / `hw install-libs` act as instant hot reload
+// while the game is running: edit in the project, run install, see it live.
+// Sidecars (electronMain) are require()-cached and NOT reloaded.
+const reloadRegistry = new Map(); // dirName → Map(absPath → mtimeMs)
+let reloadLibs = new Map();       // _lib dir snapshot
+let reloadBusy = false;
+
+function snapshotDir(dir) {
+    const out = new Map();
+    const walk = d => {
+        let entries;
+        try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+            const p = path.join(d, e.name);
+            try {
+                if (e.isDirectory()) walk(p);
+                else out.set(p, fs.statSync(p).mtimeMs);
+            } catch {}
+        }
+    };
+    walk(dir);
+    return out;
+}
+
+function snapshotChanged(cur, prev) {
+    if (cur.size !== prev.size) return true;
+    for (const [p, m] of cur) if (prev.get(p) !== m) return true;
+    return false;
+}
+
+// Re-inject one mod: teardown, inject fresh, reapply saved settings.
+async function reloadMod(wc, modsDir, dirName) {
+    const state = readState(modsDir);
+    await wc.executeJavaScript(`window.__HW__._disableMod(${JSON.stringify(dirName)})`, true);
+    const res = await injectMod(wc, modsDir, dirName, state);
+    if (res.ok) log(`Hot-reloaded: ${dirName}`);
+    else log(`Hot-reload FAILED: ${dirName} → ${res.result}`);
+    return res.ok;
+}
+
+function startReloadWatcher(wc, modsDir) {
+    wc.once('destroyed', () => {});
+    const timer = setInterval(async () => {
+        if (reloadBusy || wc.isDestroyed()) return;
+        // Check libs first — a lib change needs a full cycle.
+        try {
+            const curLibs = snapshotDir(path.join(modsDir, '_lib'));
+            if (reloadLibs.size && snapshotChanged(curLibs, reloadLibs)) {
+                reloadBusy = true;
+                try {
+                    log('Lib change detected — full reload of libs + all mods');
+                    for (const dir of [...reloadRegistry.keys()]) {
+                        await wc.executeJavaScript(`window.__HW__._disableMod(${JSON.stringify(dir)})`, true);
+                    }
+                    const libDir = path.join(modsDir, '_lib');
+                    const libFiles = fs.readdirSync(libDir).filter(f => f.endsWith('.js'));
+                    for (const f of libFiles) {
+                        const code = fs.readFileSync(path.join(libDir, f), 'utf8');
+                        const wrapped = `(() => { try { ${code} ; return 'OK'; } catch (e) { return 'ERR|' + (e && e.message ? e.message : e); } })()`;
+                        const r = await wc.executeJavaScript(wrapped, true);
+                        if (!String(r).startsWith('OK')) log(`Lib ${f} reload FAILED: ${r}`);
+                    }
+                    reloadLibs = curLibs;
+                    const state = readState(modsDir);
+                    for (const dir of [...reloadRegistry.keys()]) {
+                        const res = await injectMod(wc, modsDir, dir, state);
+                        log(res.ok ? `Reloaded: ${dir}` : `Reload FAILED: ${dir} → ${res.result}`);
+                    }
+                } finally { reloadBusy = false; }
+                return;
+            }
+            reloadLibs = curLibs;
+        } catch {}
+        // Per-mod changes.
+        reloadBusy = true;
+        try {
+            for (const [dir, prev] of [...reloadRegistry]) {
+                try {
+                    const cur = snapshotDir(path.join(modsDir, dir));
+                    if (!snapshotChanged(cur, prev)) { reloadRegistry.set(dir, cur); continue; }
+                    await reloadMod(wc, modsDir, dir);
+                    // Re-snapshot AFTER injection so our own writes don't retrigger.
+                    reloadRegistry.set(dir, snapshotDir(path.join(modsDir, dir)));
+                } catch (e) {
+                    log(`Hot-reload error (${dir}):`, e.message);
+                }
+            }
+        } finally { reloadBusy = false; }
+    }, 1000);
+}
+
 module.exports = async function loadMods(wc) {
     // Only inject into the actual game page — skip service workers,
     // devtools pages, and other headless webContents Electron spawns.
@@ -567,6 +664,7 @@ module.exports = async function loadMods(wc) {
     if (!/totaljerkface\.com/.test(url)) return;
 
     const modsDir = getModsDir();
+    reloadRegistry.clear();
     try { fs.writeFileSync(LOG_FILE, ''); } catch (e) {}
     log('Mods directory:', modsDir);
 
@@ -608,6 +706,16 @@ module.exports = async function loadMods(wc) {
     const state = readState(modsDir);
     startCommandChannel(wc, modsDir);
     log('Command channel armed (mods/.hw-commands.jsonl)');
+
+    // Live reload watcher — creator loop: edit/install a mod while the game
+    // runs and it re-injects within ~1s (see startReloadWatcher comment).
+    try {
+        reloadLibs = snapshotDir(path.join(modsDir, '_lib'));
+        startReloadWatcher(wc, modsDir);
+        log('Live reload watcher armed (mods/** mtime, 1s)');
+    } catch (e) {
+        log('Live reload watcher failed to arm:', e.message);
+    }
 
     let entries;
     try {

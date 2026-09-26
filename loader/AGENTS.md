@@ -82,6 +82,16 @@ Two formats supported by `injectMod`:
   `window.HWGhost` facade if their own probe failed. Boot loop accepts these dirs
   without mod.js.
 
+### Live reload (creator loop, verified 2026-09-26)
+
+`startReloadWatcher` polls every 1s: any file change in an injected mod's folder tears
+it down (onDisable) and re-injects it with saved settings reapplied; a change in
+`mods/_lib/` triggers a full cycle (teardown all → re-run libs → re-inject all).
+Flow: edit in project → `hw install <mod>` (or `install-libs`) → change lands live
+~1s later, no relaunch. Sidecars (`electronMain`) are require()-cached and NOT
+reloaded — relaunch for sidecar changes. Log lines: `Hot-reloaded: <dir>`,
+`Lib change detected — full reload`.
+
 ### Shared libs (mods/_lib/)
 
 - `mods/_lib/<name>.js` files load BEFORE mods (in fs order); each registers into `window.HWLibs.<name>`.

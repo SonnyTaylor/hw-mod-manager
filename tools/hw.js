@@ -78,6 +78,15 @@ const commands = {
 
     launch() {
         killGame();
+        // Self-heal: Steam updates (or file verification) restore a pristine
+        // binary + asar, silently un-modding the game. patch-game.js is
+        // idempotent — it re-patches only what's missing. If patching fails,
+        // launch anyway (a vanilla game beats no game) but say so loudly.
+        try {
+            execSync(`node "${path.join(__dirname, 'patch-game.js')}"`, { stdio: 'inherit' });
+        } catch (e) {
+            console.error('⚠️  Self-heal patch failed — launching vanilla. Run `node tools/hw.js patch` to see why.');
+        }
         launchGame();
     },
 

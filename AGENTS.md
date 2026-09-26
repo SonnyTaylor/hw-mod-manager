@@ -99,9 +99,10 @@ mods, and libs are platform-neutral.
 ```bash
 node tools/hw.js help     # full list
 node tools/hw.js dev      # patch → launch → 20s wait → dump mod log  ← main dev loop
+node tools/hw.js launch   # kill → self-heal patch → launch (patches if Steam un-modded)
 node tools/hw.js log      # just show mod host log
 node tools/hw.js new X    # scaffold mod in project mods/
-node tools/hw.js install X # copy project mod into game mods/
+node tools/hw.js install X # copy project mod into game mods/ (auto hot-reloads in the running game)
 node tools/hw.js restore  # full restore (asar + exe)
 node tools/hw.js status
 ```
@@ -138,6 +139,8 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
 - **Rust patcher: DONE (2026-09-25)** — `app/src-tauri/src/` has `fuses.rs` (byte-level @electron/fuses port, verified: `npx @electron/fuses read` agrees) and `asar.rs` (byte-level @electron/asar extract/pack with per-file SHA256 integrity + `node_modules/steamworks.js` unpack rule; roundtrip test against the real archive passes) plus `patcher.rs` orchestration (same steps as tools/patch-game.js; mod-host.js embedded via `include_str!`). **Live-verified**: restore → Rust patch → launch → all 9 mods injected. The manager is now standalone; tests: `cargo test` (asar roundtrip) / `HW_TEST_LIVE_PATCH=1 cargo test live_patch -- --nocapture` (patches real install). Node patcher remains for CLI flows.
 - **Marketplace: NOT STARTED** — planned as community git repo hosting `index.json` (metadata + zip URLs); manager tab is a placeholder describing the pipeline. Creator flow = template + PR. **Rival loaders appeared 2026-09-21..25 (HWML/Nexus, JHWML/GameBanana+Nexus) — compat strategy + live-verified Jimbob-mod support documented in docs/rival-ecosystems.md; jimbobs-multiplayer runs on our loader.**
 - **Creator/mod templates** — `hw new` scaffolding should gain hotToggle + settings-schema examples (see mods/AGENTS.md contract).
+- **Live reload: DONE (2026-09-26)** — mod-host watches injected mod folders (1s mtime poll): edit → teardown → re-inject, settings reapplied; `_lib` change = full cycle. `hw install` is now a live-reload trigger. Verified: gravity-mod hot-reloaded, full 10-mod cycle on lib change. Sidecars not reloaded (require cache).
+- **Self-healing launch: DONE (2026-09-26)** — `hw launch` and the manager's LAUNCH button re-patch (idempotent) when Steam updates un-mod the install (pitfall 11), so players never see a dead mod install. Patch failure → vanilla launch, never blocks play.
 - Mod manager GUI — **replaced by the desktop manager (`app/`)**; cheat-menu's panel remains the in-game UI.
 - **Linux (native build, appid 4705510): verified working** (2026-09-25) — fuse flip on `happy-wheels-bin`, patched asar boots, runtime + `_lib` injected, eval bridge confirmed `__HW__.ready === true` with the app captured (obf. class `D4`). Game must be launched through Steam; a network outage stalls the page before `did-finish-load` (no mod-host log) — retry when connectivity is stable.
 - **Mod library: DONE (v1)** — loader loads `mods/_lib/*.js` before mods into `window.HWLibs`;
