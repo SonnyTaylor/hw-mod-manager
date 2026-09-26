@@ -6,10 +6,13 @@
  * Characters, so community packs drop in unchanged). Assets are served by the
  * host from ./js/hw-character-packs/ (webroot mirror, rebuilt each boot).
  *
- * v1 scope: pack selection UI + in-level skinning — the character's sprites
- * are rebuilt from the pack sheet using the base character's atlas geometry.
+ * v1 scope: in-level skinning — the character's sprites are rebuilt from the
+ * pack sheet using the base character's atlas geometry. Headless: no in-game
+ * panel — the saved pack auto-applies at boot and in every new level session.
+ * Switch packs from the console:
+ *   window.charPacks.list() / apply(id) / reset() / current()
  *
- * Requires: game, ui. Settings: none (selection persisted via HWLibs.settings).
+ * Requires: game. Settings: none (selection persisted via HWLibs.settings).
  */
 (function () {
     'use strict';
@@ -17,10 +20,9 @@
     const packs = window.__HW__.characterPacks || [];
     if (!packs.length) { HW.log('character-packs', 'no packs synced — add packs to mods/character-packs/packs/'); return; }
 
-    HW.onDisable(() => { /* teardown: restore original textures if skinned */ unskin(); panel && panel.destroy && panel.destroy(); });
+    HW.onDisable(() => { /* teardown: restore original textures if skinned */ unskin(); });
 
     const STORE = 'character-packs';
-    let panel = null;
     let activePack = null;
     let replacements = null; // Map(frameName → Texture) for the active pack
     let baseAtlas = null;    // {byRectKey → frameName, frames, sx, sy}
@@ -116,34 +118,31 @@
         activePack = null;
     }
 
-    // Panel
-    HW.onReady(() => {
-        panel = window.HWLibs.ui.panel({ title: 'Characters', storageKey: 'charpacks', width: 240 });
-        const sec = panel.addSection('Packs');
-        const saved = window.HWLibs.settings.get(STORE, 'pack', null);
-        for (const p of packs) {
-            sec.addButtons([{ label: `${p.name}${saved === p.id ? ' ✓' : ''}`, value: p.id, accent: 'green' }], async id => {
-                try {
-                    unskin();
-                    window.HWLibs.settings.set(STORE, 'pack', id);
-                    await buildPack(packs.find(x => x.id === id));
-                    activePack = id;
-                    const n = skin();
-                    panel.setValue(`${p.name} (${n} sprites)`);
-                    HW.log('character-packs', `applied ${p.name} — ${n} sprites reskinned`);
-                } catch (e) {
-                    panel.setValue('error');
-                    HW.log('character-packs', `apply failed: ${e.message}`);
-                }
-            });
-        }
-        panel.addButtons([{ label: 'Vanilla', value: 'reset', accent: 'red' }], () => {
+    // Console API (replaces the old in-game panel — selection is a
+    // set-and-forget action, not something that needs a menu on screen).
+    window.charPacks = {
+        list() { return packs.map(p => ({ id: p.id, name: p.name, base: p.base })); },
+        current() { return activePack; },
+        async apply(id) {
+            const p = packs.find(x => x.id === id);
+            if (!p) throw new Error('unknown pack: ' + id);
+            unskin();
+            window.HWLibs.settings.set(STORE, 'pack', id);
+            await buildPack(p);
+            activePack = id;
+            const n = skin();
+            HW.log('character-packs', `applied ${p.name} — ${n} sprites reskinned`);
+            return n;
+        },
+        reset() {
             unskin();
             window.HWLibs.settings.remove(STORE, 'pack');
-            panel.setValue('vanilla');
-        });
-        panel.setValue(saved ? `saved: ${saved}` : 'vanilla');
+            HW.log('character-packs', 'reset to vanilla');
+        }
+    };
 
+    HW.onReady(() => {
+        const saved = window.HWLibs.settings.get(STORE, 'pack', null);
         // Re-apply the saved pack whenever a level session starts.
         let lastSession = null;
         HW.onTick(() => {
@@ -163,5 +162,5 @@
         }
     });
 
-    HW.log('character-packs', `ready with ${packs.length} pack(s): ${packs.map(p => p.name).join(', ')}`);
+    HW.log('character-packs', `ready with ${packs.length} pack(s): ${packs.map(p => p.name).join(', ')} — switch via window.charPacks`);
 })();

@@ -282,7 +282,13 @@ function startEvalBridge(wc) {
 // Consumed byte-offset style so nothing runs twice; truncation resets it.
 function startCommandChannel(wc, modsDir) {
     const cmdFile = path.join(modsDir, '.hw-commands.jsonl');
+    // Start at the END of any existing command file: lines accumulated while
+    // no game was running (or by previous sessions) are stale — boot-time
+    // state is already covered by state.json, so replaying them would
+    // re-run old toggles on top of fresh injections (duplicate panels).
     let offset = 0;
+    try { offset = fs.statSync(cmdFile).size; } catch { offset = 0; }
+    if (offset > 0) log(`Command channel: skipping ${offset} stale byte(s) from previous sessions`);
     let busy = false;
     let stopped = false;
     wc.once('destroyed', () => { stopped = true; });

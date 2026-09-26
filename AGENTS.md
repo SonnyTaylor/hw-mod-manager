@@ -65,7 +65,8 @@ mods, and libs are platform-neutral.
 │      ├─ F12/Ctrl+Shift+I → openDevTools toggle (before-input-event)
 │      ├─ await wc.executeJavaScript(RUNTIME)  → defines window.__HW__ in page
 │      ├─ reads state.json → injects enabled mods only (disabled ones register bare)
-│      ├─ polls mods/.hw-commands.jsonl (250ms, byte-offset) → toggle/settings/eval ops
+│      ├─ polls mods/.hw-commands.jsonl (250ms, byte-offset, seeks to end-of-file on boot →
+│      │     stale commands from previous sessions are skipped) → toggle/settings/eval ops
 │      │     toggle-on = re-inject mod from disk; toggle-off = run mod's onDisable teardowns
 │      └─ applies saved settings per mod right after injection (onSettings)
 │
@@ -155,11 +156,21 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
   Detailed internals live in `docs/game-internals.md`.
 - **Character packs: DONE (2026-09-26)** — `mods/character-packs/` native mod, Jimbob-compatible
   `character.json` schema; host auto-mirrors packs into webroot (`syncWebrootPacks`); user-verified
-  in-game (Tung Tung Sahur applied through our chain AND through the rival mod).
+  in-game (Tung Tung Sahur applied through our chain AND through the rival mod). Headless since
+  2026-09-26: no in-game panel — saved pack auto-applies at boot + per session; console API
+  `window.charPacks.list()/apply(id)/reset()/current()`.
 - **Skin packs: DONE (2026-09-26)** — `mods/skin-packs/` native mod: `skin.json` replace-map
   (game asset path suffix → same-size PNG), canvas → `baseTexture` in-place swap verified live
   (82 cache entries, instant, no restart). Demo pack removed; format documented in
-  `docs/game-internals.md` (textures) and `docs/rival-ecosystems.md`.
+  `docs/game-internals.md` (textures) and `docs/rival-ecosystems.md`. Headless since 2026-09-26:
+  no in-game panel — saved pack auto-applies at boot; console API `window.skinPacks` (same shape).
+- **Command channel replay bug: FIXED (2026-09-26)** — the host used to re-consume the entire
+  `.hw-commands.jsonl` from offset 0 on every boot, replaying stale toggle commands from old
+  sessions (symptom: duplicated Cheats panel — a replayed toggle-off landed before cheat-menu's
+  onReady panel existed, teardown removed nothing, then stale wait-loop + re-injection both
+  built). `startCommandChannel` now seeks to end-of-file on arm; boot-time state comes from
+  state.json, so nothing is lost. cheat-menu additionally guards with a `cancelled` flag +
+  duplicate-panel check (defense in depth).
 - **Webpack master key: DONE (2026-09-26)** — `__HW__.require` / `__HW__.state` (module 35057 `.w`),
   PixiJS module 99430 (`mcf/kxk/gPd/uqu/M_G/WpD`). Re-verify IDs after Steam updates.
 - Gravity mod **verified working in-level** (moon/jupiter tested, screenshot 2026-09-25).

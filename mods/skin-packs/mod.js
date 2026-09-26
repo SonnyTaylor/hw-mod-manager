@@ -15,7 +15,11 @@
  * Texture's baseTexture in place — every sprite referencing that texture
  * (present and future) picks it up. Originals are kept for restore.
  *
- * Requires: game, ui.
+ * Headless: no in-game panel — the saved pack auto-applies at boot.
+ * Switch packs from the console:
+ *   window.skinPacks.list() / apply(id) / reset() / current()
+ *
+ * Requires: game.
  */
 (function () {
     'use strict';
@@ -24,7 +28,6 @@
     if (!packs.length) { HW.log('skin-packs', 'no packs synced — add packs to mods/skin-packs/packs/'); return; }
 
     const STORE = 'skin-packs';
-    let panel = null;
     let applied = []; // [{ tex, origBase, origUrl }] for restore
     let activeId = null;
 
@@ -79,32 +82,30 @@
         activeId = null;
     }
 
-    HW.onDisable(() => { restore(); panel && panel.destroy && panel.destroy(); });
+    HW.onDisable(() => { restore(); });
 
-    HW.onReady(() => {
-        panel = window.HWLibs.ui.panel({ title: 'Skin Packs', storageKey: 'skinpacks', width: 240 });
-        const sec = panel.addSection('Packs');
-        const saved = window.HWLibs.settings.get(STORE, 'pack', null);
-        for (const p of packs) {
-            const count = Object.keys(p.replace || {}).length;
-            sec.addButtons([{ label: `${p.name} (${count})`, value: p.id, accent: 'green' }], async id => {
-                try {
-                    const r = await applyPack(packs.find(x => x.id === id));
-                    window.HWLibs.settings.set(STORE, 'pack', id);
-                    panel.setValue(`${r.appliedCount} swapped`);
-                    if (r.skipped.length) HW.log('skin-packs', 'skipped: ' + r.skipped.join('; '));
-                } catch (e) {
-                    panel.setValue('error');
-                    HW.log('skin-packs', 'apply failed: ' + e.message);
-                }
-            });
-        }
-        panel.addButtons([{ label: 'Vanilla', value: 'reset', accent: 'red' }], () => {
+    // Console API (replaces the old in-game panel — swapping is a
+    // set-and-forget action, not something that needs a menu on screen).
+    window.skinPacks = {
+        list() { return packs.map(p => ({ id: p.id, name: p.name, replaces: Object.keys(p.replace || {}).length })); },
+        current() { return activeId; },
+        async apply(id) {
+            const p = packs.find(x => x.id === id);
+            if (!p) throw new Error('unknown pack: ' + id);
+            const r = await applyPack(p);
+            window.HWLibs.settings.set(STORE, 'pack', id);
+            if (r.skipped.length) HW.log('skin-packs', 'skipped: ' + r.skipped.join('; '));
+            return r;
+        },
+        reset() {
             restore();
             window.HWLibs.settings.remove(STORE, 'pack');
-            panel.setValue('vanilla');
-        });
-        panel.setValue(saved ? `saved: ${saved}` : 'vanilla');
+            HW.log('skin-packs', 'reset to vanilla');
+        }
+    };
+
+    HW.onReady(() => {
+        const saved = window.HWLibs.settings.get(STORE, 'pack', null);
 
         // Auto-apply saved pack once its textures are in the cache (they load
         // progressively; retry on tick until all mapped paths are loaded).
@@ -117,12 +118,11 @@
             const allLoaded = Object.keys(p.replace || {}).every(k => findTexBySuffix(k).length);
             if (allLoaded) {
                 applyPack(p).then(r => {
-                    panel.setValue(`${r.appliedCount} swapped`);
                     if (r.skipped.length) HW.log('skin-packs', 'skipped: ' + r.skipped.join('; '));
                 }).catch(e => HW.log('skin-packs', 'boot apply failed: ' + e.message));
             }
         });
     });
 
-    HW.log('skin-packs', `ready with ${packs.length} pack(s): ${packs.map(p => p.name).join(', ')}`);
+    HW.log('skin-packs', `ready with ${packs.length} pack(s) — switch via window.skinPacks`);
 })();

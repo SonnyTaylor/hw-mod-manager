@@ -31,7 +31,12 @@
     // Hot-disable teardown: remove ONLY this mod's panel (tagged by the ui lib),
     // never other mods' panels — `.hw-panel` alone would wipe the whole screen
     // and caused cross-mod panel loss on hot-reloads.
+    // `cancelled` also stops the onReady engine-wait loop: the toggle-off may
+    // arrive before the panel is built (stale command replay / fast toggling),
+    // and without it the orphaned loop builds a second panel on re-injection.
+    let cancelled = false;
     HW.onDisable(function () {
+        cancelled = true;
         document.querySelectorAll('[data-hw-panel="cheats"]').forEach(el => el.remove());
         HW.log('Cheat Menu', 'disabled — panel removed');
     });
@@ -45,6 +50,7 @@
         // engines may inject after us — poll briefly
         let tries = 0;
         (function wait() {
+            if (cancelled) return;   // toggled off while waiting
             if (window.gravity && window.charEd && window.viewport && window.timeScale && window.freecam && window.hud && window.physgun) {
                 try { build(); } catch (e) { HW.log('Cheat Menu', 'build failed:', e.message); }
                 return;
@@ -57,6 +63,9 @@
         })();
 
         function build() {
+            if (cancelled) return;
+            // belt & braces: one panel per mod, whatever the injection history
+            if (document.querySelector('[data-hw-panel="cheats"]')) return;
             const GOD = 1e9;
             const grav = window.gravity;
             const ed = window.charEd;
