@@ -58,6 +58,11 @@ HW.onEnable(fn);                   // rarely needed — hot-enable re-injects th
   off→on never stacks stale teardowns.
 - Reference implementation: gravity-mod (preset select + custom factor slider,
   deferred application until onReady).
+- `HWLibs.ui` v3 panels **auto-dock**: panels without a user-dragged position
+  arrange into a wrap-around row anchored top-right, so panels from different
+  mods never overlap. Dragging a panel frees it (position persisted per
+  storageKey as `userX/userY`); everything else keeps auto-docking across
+  sessions. Panels work fine without a `storageKey` (nothing is persisted).
 
 ## Mod environment
 

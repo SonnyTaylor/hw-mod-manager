@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0}</style></head>
+<body style="background:#3a6ea5 url() ;background:linear-gradient(180deg,#6ea8d8,#3a6ea5)">
+<!-- fake game backdrop: sky + a road -->
+<canvas id="c" width="1280" height="720" style="position:fixed;inset:0;width:100vw;height:100vh"></canvas>
+<script src="ui.js"></script>
+<script>
+// draw a fake game scene
+const c = document.getElementById('c').getContext('2d');
+const g = c.createLinearGradient(0,0,0,720); g.addColorStop(0,'#87b8e0'); g.addColorStop(1,'#54749a');
+c.fillStyle=g; c.fillRect(0,0,1280,720);
+c.fillStyle='#4a3f35'; c.fillRect(0,560,1280,160);
+c.fillStyle='#5a4e41'; c.fillRect(0,560,1280,14);
+c.strokeStyle='#e8e2d5'; c.setLineDash([40,30]); c.lineWidth=4;
+c.beginPath(); c.moveTo(0,640); c.lineTo(1280,640); c.stroke();
+c.fillStyle='#c33'; c.beginPath(); c.arc(900,530,26,0,7); c.fill(); // ball guy
+
+// mimic the three real panels with real content
+const p1 = HWLibs.ui.panel({ title: 'Cheats', storageKey: null, width: 240 });
+const gSec = p1.addSection('Gravity');
+gSec.addSlider({ label: 'Factor', min:0, max:3, step:.05, value:1, onInput(){} });
+gSec.addButtons([{label:'0g',value:0},{label:'Moon',value:.16},{label:'Mars',value:.38},{label:'Earth',value:1},{label:'Jupiter',value:2.53}],()=>{});
+const cSec = p1.addSection('Character');
+cSec.addSlider({ min:.1, max:50, step:.05, value:3, onInput(){} });
+cSec.addButtons([{label:'Paper',value:.1},{label:'Glass',value:.25},{label:'Normal',value:1},{label:'Tough',value:3},{label:'Iron',value:10}],()=>{});
+cSec.addButtons([{label:'GOD',value:1e9,accent:'red'}],()=>{});
+const vSec = p1.addSection('Viewport');
+vSec.addButtons([{label:'16:9',value:'16:9',accent:'blue'},{label:'21:9',value:'21:9'},{label:'1:1',value:'1:1'},{label:'9:16',value:'9:16'},{label:'Fill',value:'fill'}],()=>{});
+const tSec = p1.addSection('Time');
+tSec.addSlider({ label:'Speed', min:.05, max:2, step:.05, value:.25, onInput(){} });
+tSec.addButtons([{label:'0.1x',value:.1},{label:'Slow',value:.25},{label:'Half',value:.5},{label:'1x',value:1},{label:'2x',value:2}],()=>{});
+p1.addSection('Camera').addToggle({label:'Free camera (F)',value:true,onChange(){}});
+p1.addSection('HUD').addToggle({label:'Show HUD readout',value:false,onChange(){}});
+const gunSec = p1.addSection('Sandbox');
+gunSec.addToggle({label:'Physics gun (G)',value:true,onChange(){}});
+gunSec.addSlider({label:'Strength',min:.5,max:5,step:.25,value:2,onInput(){}});
+p1.setValue('1.00× / 3.00×');
+
+const p2 = HWLibs.ui.panel({ title: 'Characters', storageKey: null, width: 240 });
+const sec2 = p2.addSection('Packs');
+sec2.addButtons([{label:'Tung Tung Sahur ✓',value:'tts',accent:'green'}],()=>{});
+sec2.addButtons([{label:'Bob',value:'bob'}],()=>{});
+p2.addButtons([{label:'Vanilla',value:'reset',accent:'red'}],()=>{});
+p2.setValue('saved: tts');
+
+const p3 = HWLibs.ui.panel({ title: 'Skin Packs', storageKey: null, width: 240 });
+const sec3 = p3.addSection('Packs');
+sec3.addButtons([{label:'Neon (42)',value:'neon',accent:'green'}],()=>{});
+p3.addButtons([{label:'Vanilla',value:'reset',accent:'red'}],()=>{});
+p3.setValue('42 swapped');
+</script></body></html>

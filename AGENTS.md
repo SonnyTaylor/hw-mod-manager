@@ -145,9 +145,13 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
 - **Linux (native build, appid 4705510): verified working** (2026-09-25) — fuse flip on `happy-wheels-bin`, patched asar boots, runtime + `_lib` injected, eval bridge confirmed `__HW__.ready === true` with the app captured (obf. class `D4`). Game must be launched through Steam; a network outage stalls the page before `did-finish-load` (no mod-host log) — retry when connectivity is stable.
 - **Mod library: DONE (v1)** — loader loads `mods/_lib/*.js` before mods into `window.HWLibs`;
   mod.json `"requires"` gates injection. Libs: `game` (graph accessors + gravity helpers),
-  `settings` (namespaced localStorage), `ui` (panel factory: drag/collapse/persist, collapsible
-  sections, sliders/buttons/toggle-switches, accent colors, panel.destroy() teardown,
-  per-panel `data-hw-panel` tag for scoped teardown).
+  `settings` (namespaced localStorage), `ui` v3 (panel factory: graphite/amber dark-glass
+  panels, **auto-dock layout** — undragged panels wrap into a row anchored top-right so
+  panels never overlap; drag = free position persisted as userX/userY, collapsible
+  sections with hairline rules, sliders with label + live value readout + filled track,
+  buttons/toggle-switches, accent colors, panel.destroy() teardown, per-panel
+  `data-hw-panel` tag for scoped teardown). Visual dev harness: `mods/_lib/_preview.html`
+  (open in a browser to see all panels without launching the game).
   Detailed internals live in `docs/game-internals.md`.
 - **Character packs: DONE (2026-09-26)** — `mods/character-packs/` native mod, Jimbob-compatible
   `character.json` schema; host auto-mirrors packs into webroot (`syncWebrootPacks`); user-verified
