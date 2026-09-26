@@ -62,6 +62,8 @@ window.__HW__ = {
     require: null,
     // Game state module (webpack module 35057 → exports .w). Populated with require.
     state: null,
+    // Native character packs, synced from mods/character-packs/packs/ by the host.
+    characterPacks: [],
 
     onReady(cb) {
         if (this.ready) cb(this.app);
@@ -656,6 +658,40 @@ function startReloadWatcher(wc, modsDir) {
     }, 1000);
 }
 
+// --- Character packs -------------------------------------------------------
+// Native character-pack serving. A pack is a folder under
+// <game>/mods/character-packs/packs/<pack>/ with a character.json:
+//   {"name": str, "base": 1..11 (vanilla character index), "sheet": png, "icon": png}
+// (same schema Jimbob's Custom Characters uses — their content drops in as-is).
+// syncCharacterPacks(): rebuilds <game>/resources/webroot/js/hw-character-packs/
+// from the packs dir (additive webroot folder, wiped + re-copied each boot so
+// it always mirrors the mods folder) and returns the manifest summaries.
+// RUNTIME exposes them as window.__HW__.characterPacks.
+function syncCharacterPacks(modsDir) {
+    const packsDir = path.join(modsDir, 'character-packs', 'packs');
+    const dstRoot = path.join(path.dirname(modsDir), 'resources', 'webroot', 'js', 'hw-character-packs');
+    const packs = [];
+    let entries;
+    try { entries = fs.readdirSync(packsDir, { withFileTypes: true }); } catch { return packs; }
+    // Clean rebuild so removed packs disappear from the page too.
+    try { fs.rmSync(dstRoot, { recursive: true, force: true }); } catch (e) {}
+    fs.mkdirSync(dstRoot, { recursive: true });
+    for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        const src = path.join(packsDir, e.name);
+        const manifestPath = path.join(src, 'character.json');
+        if (!fs.existsSync(manifestPath)) continue;
+        let manifest;
+        try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
+        catch (err) { log(`Bad character.json in pack ${e.name}:`, err.message); continue; }
+        try {
+            fs.cpSync(src, path.join(dstRoot, e.name), { recursive: true });
+            packs.push({ id: e.name, ...manifest });
+        } catch (err) { log(`Pack copy failed (${e.name}):`, err.message); }
+    }
+    return packs;
+}
+
 module.exports = async function loadMods(wc) {
     // Only inject into the actual game page — skip service workers,
     // devtools pages, and other headless webContents Electron spawns.
@@ -701,6 +737,18 @@ module.exports = async function loadMods(wc) {
     } catch (e) {
         log('Runtime injection FAILED:', e.message);
         return;
+    }
+
+    // Character packs: mirror mods/character-packs/packs/* into webroot and
+    // publish the manifests into the page BEFORE mods load.
+    try {
+        const packs = syncCharacterPacks(modsDir);
+        await wc.executeJavaScript(
+            `window.__HW__.characterPacks = ${JSON.stringify(packs)};`, true,
+        );
+        if (packs.length) log(`Character packs synced: ${packs.map(p => p.id).join(', ')}`);
+    } catch (e) {
+        log('Character pack sync failed:', e.message);
     }
 
     const state = readState(modsDir);

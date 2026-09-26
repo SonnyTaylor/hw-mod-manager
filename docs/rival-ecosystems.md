@@ -49,6 +49,33 @@ sidecar loaded, adapter `installed: true`, multiplayer UI button live,
 `window.HWGhost.status = "Open Multiplayer to join or host a room."`, zero errors,
 alongside our 9 mods (10 total).
 
+### Character chain verified end-to-end (2026-09-26, user-tested in game)
+
+Tung Tung Sahur (Nexus #7, character for Jimbob's Custom Characters) runs on our loader:
+1. Parent mod `jimbobs-custom-characters` copied into `<game>/mods/` (same GameBanana
+   zip flow as multiplayer).
+2. Character folder copied to `<parent>/web/characters/<id>/` + `index.json` regenerated.
+3. **Assets must be fetchable by the page at `./js/<modid>/characters/...`** — their
+   system mirrors mod web content into `resources/webroot/js/` (their electron-scan.cjs
+   writes there). We mirrored the characters dir into webroot the same way; the game's
+   protocol handler serves it (fetch 200s confirmed from the page).
+4. Character-menu hook: `screenManager.currentScreen.happyWheels.sessionController.characterMenu`.
+   Their `HWCustomCharacters.slots/painted` counters only populate at that screen.
+5. Their self-capture fails on this build (same `Tmu...0` name bug) — our post-injection
+   compat step patches our require into `window.HWGhost`, and custom-chars' own fallback
+   (scan window for the chunk array) would ALSO fail — ours is the working path.
+
+**Our native version: `mods/character-packs/`** (v0.1.0, verified live 2026-09-26).
+Same `character.json` schema → their community content is drop-in compatible. Host side:
+`syncCharacterPacks()` mirrors `<game>/mods/character-packs/packs/*` →
+`resources/webroot/js/hw-character-packs/` (additive, wiped + rebuilt each boot) and
+publishes manifests as `window.__HW__.characterPacks` before mods load. Mod side:
+HWLibs.ui panel, pick pack → sheet mapped onto the base atlas grid (fetch
+`assets-*/animate/character<base>/character<base>.json`, scale = sheet/atlas size,
+frames matched by rect) → reskins live sprites via `HWLibs.game.character()` walker
+(objects with `.pixiSprite`), restores originals on Vanilla/teardown, re-applies per
+new session via onTick.
+
 ## Their game knowledge we can reuse (facts, not their code)
 
 - Level downloads: `POST /get_level.hw` with `action=get_level` (mutable metadata) /

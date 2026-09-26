@@ -1,0 +1,6 @@
+{
+  "name": "Character Packs",
+  "version": "0.1.0",
+  "description": "Custom character packs (character.json + sheet). Select in the Character Packs panel.",
+  "requires": ["game", "ui"]
+}

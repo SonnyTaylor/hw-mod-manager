@@ -92,6 +92,15 @@ Flow: edit in project → `hw install <mod>` (or `install-libs`) → change land
 reloaded — relaunch for sidecar changes. Log lines: `Hot-reloaded: <dir>`,
 `Lib change detected — full reload`.
 
+### Character packs (native)
+
+`mods/character-packs/` — packs in `<moddir>/packs/<id>/` (`character.json`:
+`{name, base, sheet, icon}`, Jimbob-compatible schema). Host mirrors packs into
+`resources/webroot/js/hw-character-packs/` each boot (`syncCharacterPacks`) and
+publishes `window.__HW__.characterPacks`. The webroot mirror is additive and
+game-file-safe, but `hw restore` does not currently remove it — manual cleanup:
+delete `<game>/resources/webroot/js/hw-character-packs/`.
+
 ### Shared libs (mods/_lib/)
 
 - `mods/_lib/<name>.js` files load BEFORE mods (in fs order); each registers into `window.HWLibs.<name>`.
