@@ -146,8 +146,18 @@ Game path auto-detected per platform (see `tools/platform.js`); override with `H
 - **Mod library: DONE (v1)** — loader loads `mods/_lib/*.js` before mods into `window.HWLibs`;
   mod.json `"requires"` gates injection. Libs: `game` (graph accessors + gravity helpers),
   `settings` (namespaced localStorage), `ui` (panel factory: drag/collapse/persist, collapsible
-  sections, sliders/buttons/toggle-switches, accent colors, panel.destroy() teardown).
+  sections, sliders/buttons/toggle-switches, accent colors, panel.destroy() teardown,
+  per-panel `data-hw-panel` tag for scoped teardown).
   Detailed internals live in `docs/game-internals.md`.
+- **Character packs: DONE (2026-09-26)** — `mods/character-packs/` native mod, Jimbob-compatible
+  `character.json` schema; host auto-mirrors packs into webroot (`syncWebrootPacks`); user-verified
+  in-game (Tung Tung Sahur applied through our chain AND through the rival mod).
+- **Skin packs: DONE (2026-09-26)** — `mods/skin-packs/` native mod: `skin.json` replace-map
+  (game asset path suffix → same-size PNG), canvas → `baseTexture` in-place swap verified live
+  (82 cache entries, instant, no restart). Demo pack removed; format documented in
+  `docs/game-internals.md` (textures) and `docs/rival-ecosystems.md`.
+- **Webpack master key: DONE (2026-09-26)** — `__HW__.require` / `__HW__.state` (module 35057 `.w`),
+  PixiJS module 99430 (`mcf/kxk/gPd/uqu/M_G/WpD`). Re-verify IDs after Steam updates.
 - Gravity mod **verified working in-level** (moon/jupiter tested, screenshot 2026-09-25).
 - **Viewport control** (`viewport-mod`): aspect presets via the game's own layout path — verified working by user (2026-09-25).
 - **Time control** (`time-mod`): physics slow-mo/fast via `session.m_timeStep` — built, injected OK; in-level verification pending.

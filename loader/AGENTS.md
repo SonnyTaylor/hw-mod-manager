@@ -42,6 +42,8 @@ Texture, `uqu` Matrix, `M_G` Rectangle, `WpD` utils/TextureCache). Their code al
 
 No remote-debugging-port (main.js exits if present). For live JS execution in the page: write JS to `<game>/mods/dev-eval.js`; a 500ms poller runs it via `wc.executeJavaScript` and writes the result to `<game>/mods/dev-eval-result.txt`. Re-running the same content is a no-op (dedupe). This is how the agent can probe the live game from bash. Files are recreated on demand; delete after use.
 
+**Gotcha (bit us twice):** the bridge evaluates an EXPRESSION, not a statement body — `return …` at top level fails with "Script failed to execute". Wrap multi-statement probes in an IIFE: `(() => { …; return JSON.stringify(x); })()`. Async probes: async IIFE. `catch` blocks can't see `let` declared inside `try` (block scoping) — declare step counters outside.
+
 ### Command channel (hot-toggle / hot-settings, used by the desktop manager)
 
 The manager appends one JSON command per line to `<game>/mods/.hw-commands.jsonl`; `startCommandChannel` polls every 250ms consuming it **byte-offset** (nothing runs twice; file truncation resets the offset; >1MB truncates). Ops:

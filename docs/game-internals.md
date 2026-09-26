@@ -1,8 +1,10 @@
 # Happy Wheels (Steam v1.99.1) — Game Internals
 
-> Verified live against the running game via the eval bridge (2026-09-25).
+> Verified live against the running game via the eval bridge (2026-09-25/26).
 > Class names are obfuscated short identifiers (`y4`, `MA`, `e`…) — **never rely on
 > them**; rely on property paths and object shapes. Re-verify after any Steam update.
+> Webpack module IDs (35057/99430) are build-specific too — re-verify, but they
+> matched across both platform builds of 1.99.1 so far.
 
 ## Global objects reachable from the page main world
 
@@ -198,6 +200,38 @@ triggers (landing detection, collision sounds, achievements).
   verified — reverse it more before calling.
 - `charIndex` is set at session creation; changing it mid-session requires the
   loadCharacter path.
+
+## Textures / assets (probed live 2026-09-26 — basis for character & skin packs)
+
+- The bundle registers an overridden `push` on the chunk table; the webpack `require`
+  gives us **module 99430 = PixiJS** (export names are obfuscated, stable on v1.99.1:
+  `mcf` Container, `kxk` Sprite, `gPd` Texture (has `.from`, `.TextureCache` lives on
+  `WpD`), `uqu` Matrix, `M_G` Rectangle, `WpD` utils) and **module 35057 = game state**
+  (`.w`: 62 keys incl. `rootApp`, `use60FPS`, `characterIndex`, `totalCharacters`,
+  `CURRENT_VERSION`). Module 29552 (used by rival mods) does NOT exist on this build.
+- `WpD.TextureCache` holds ~2,900 live texture refs. Distinct source PNGs (~56):
+  `assets-<hash>/animate/game/a..s.png` (level object atlases),
+  `animate/backgrounds/backgrounds_atlas_1..3.png`, `animate/game-ui/game_ui_atlas_1..5.png`,
+  `animate/character1..11/*.png` (character2 = Segway Guy, 80 frames),
+  `animate/character-shared`, `animate/editor`, `image/icons`, `image/level-browser`,
+  `image/app-icon.png`, `image/character_images`.
+- **Texture-swap pattern (verified live)**: same-size PNG → canvas → assign as the
+  cached Texture's `baseTexture` in place → every sprite referencing it updates
+  instantly (82 cache entries referenced character2.png). Frame rects come from the
+  companion `.json` atlas — same pixel size keeps them valid. Present AND future
+  sprites pick up the swap; originals should be kept for restore.
+- Character pack (whole-sheet reskin): replacement sheet mapped onto the base atlas
+  grid via `fetch('assets-*/animate/character<base>/character<base>.json')` —
+  `scale = sheetPx / atlas.meta.size.w` (aspect must match within 0.5%).
+- The game's own asset server serves webroot files at relative `./js/...` and
+  `./assets-<hash>/...` URLs from the page — additive folders under
+  `resources/webroot/js/` are fetchable (used by pack mirroring; see
+  loader/AGENTS.md). `app-icon.png`/atlas availability varies per screen — the menu
+  session may only cache `backgrounds_atlas_2/3`; auto-apply must retry until the
+  target textures are cached.
+- Cache entries get destroyed/recreated on screen transitions — a texture swap done
+  in the menu does not survive into the next screen's fresh cache; re-apply per
+  session/screen (the skin-packs mod does this via onTick retry).
 
 ### Level browser (snooped on the browse-levels page 2026-09-25)
 
