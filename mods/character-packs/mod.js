@@ -118,7 +118,7 @@
 
     // Panel
     HW.onReady(() => {
-        panel = window.HWLibs.ui.panel({ title: 'Character Packs', storageKey: 'charpacks' });
+        panel = window.HWLibs.ui.panel({ title: 'Characters', storageKey: 'charpacks', width: 240 });
         const sec = panel.addSection('Packs');
         const saved = window.HWLibs.settings.get(STORE, 'pack', null);
         for (const p of packs) {

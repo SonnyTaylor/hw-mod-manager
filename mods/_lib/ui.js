@@ -173,6 +173,9 @@
 
             const el = document.createElement('div');
             el.className = 'hw-panel';
+            // Per-mod teardown marker: mods remove ONLY their own panel
+            // (querySelector(`[data-hw-panel="..."`)`), never other mods'.
+            el.dataset.hwPanel = opts.storageKey || opts.title || 'panel';
             if (saved.width || opts.width) el.style.width = (saved.width || opts.width) + 'px';
             el.innerHTML =
                 '<div class="hw-panel-head">' +

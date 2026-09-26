@@ -50,6 +50,10 @@ HW.onEnable(fn);                   // rarely needed — hot-enable re-injects th
   use inside `onReady` instead of re-reading HWLibs.settings for manager-owned values.
 - Teardowns must leave the game as if the mod never ran (restore mutated state,
   remove DOM elements). `HWLibs.ui` panels have `panel.destroy()` for this.
+- **Remove only YOUR panel**: `HWLibs.ui` tags every panel with
+  `data-hw-panel="<storageKey>"` — teardown uses
+  `document.querySelectorAll('[data-hw-panel="<storageKey>"]')`. Never blanket-remove
+  `.hw-panel` — that wipes other mods' panels (bug we hit with cheat-menu, 2026-09-26).
 - `HW._registerCurrent` resets the hook arrays on re-injection, so toggling
   off→on never stacks stale teardowns.
 - Reference implementation: gravity-mod (preset select + custom factor slider,

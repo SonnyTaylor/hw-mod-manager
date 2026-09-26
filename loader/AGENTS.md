@@ -92,6 +92,16 @@ Flow: edit in project → `hw install <mod>` (or `install-libs`) → change land
 reloaded — relaunch for sidecar changes. Log lines: `Hot-reloaded: <dir>`,
 `Lib change detected — full reload`.
 
+Related fixes (same day, from a duplicated-panel bug report):
+- **Double-boot guard**: `did-finish-load` can fire twice for the game page; a second
+  `loadMods` used to re-inject every mod on top of the live ones. RUNTIME now sets
+  `window.__HW_BOOTED` after injection and `loadMods` skips if it's set (page reloads
+  clear it naturally).
+- **Hot-enable tears down first**: `toggle enabled:true` runs `_disableMod` before
+  `injectMod`, so re-enabling a live mod replaces it instead of stacking.
+- **Per-panel teardown**: `HWLibs.ui` panels carry `data-hw-panel="<storageKey>"`;
+  mods must remove only their own (see mods/AGENTS.md).
+
 ### Character packs (native)
 
 `mods/character-packs/` — packs in `<moddir>/packs/<id>/` (`character.json`:

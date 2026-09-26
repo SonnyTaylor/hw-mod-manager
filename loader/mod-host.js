@@ -323,6 +323,9 @@ async function handleCommand(wc, modsDir, cmd) {
     log('Command:', cmd.op, cmd.id || '');
     if (cmd.op === 'toggle') {
         if (cmd.enabled) {
+            // Teardown first so re-enabling a live mod replaces it instead of
+            // stacking a duplicate panel/entry (idempotent: 'not-loaded' when absent).
+            try { await wc.executeJavaScript(`window.__HW__._disableMod(${JSON.stringify(cmd.id)})`, true); } catch {}
             const state = readState(modsDir);
             const res = await injectMod(wc, modsDir, cmd.id, state);
             if (res.ok) {
@@ -731,8 +734,15 @@ module.exports = async function loadMods(wc) {
 
     // Inject runtime first and WAIT for it — mods reference window.__HW__
     // at the top of their IIFE, so a race here breaks every mod.
+    // Double-boot guard: did-finish-load can fire twice for the same page
+    // (known Electron quirk on this game) — a second run would re-inject every
+    // mod on top of the live ones (duplicate panels). Page reloads clear the
+    // flag naturally, so real reloads still work.
     try {
+        const booted = await wc.executeJavaScript('!!window.__HW_BOOTED', true);
+        if (booted) { log('Runtime already live on this page — skipping re-injection'); return; }
         await wc.executeJavaScript(RUNTIME, true);
+        await wc.executeJavaScript('window.__HW_BOOTED = true', true);
         log('Runtime injected OK');
     } catch (e) {
         log('Runtime injection FAILED:', e.message);

@@ -28,9 +28,11 @@
 
     const HW = window.__HW__;
 
-    // Hot-disable teardown: remove the panel from the DOM (see mods/AGENTS.md).
+    // Hot-disable teardown: remove ONLY this mod's panel (tagged by the ui lib),
+    // never other mods' panels — `.hw-panel` alone would wipe the whole screen
+    // and caused cross-mod panel loss on hot-reloads.
     HW.onDisable(function () {
-        document.querySelectorAll('.hw-panel').forEach(el => el.remove());
+        document.querySelectorAll('[data-hw-panel="cheats"]').forEach(el => el.remove());
         HW.log('Cheat Menu', 'disabled — panel removed');
     });
 
